@@ -28,6 +28,17 @@ export interface SpotifyTrack {
   playlistUri?: string | null;
 }
 
+export interface SpotifyPlaylist {
+  id: string;
+  name: string;
+  uri: string;
+  description?: string;
+  totalTracks: number;
+  image?: string | null;
+  isPublic: boolean;
+  collaborative: boolean;
+}
+
 export interface SpotifyInfo {
   clientId: string;
   hasClientSecret?: boolean;

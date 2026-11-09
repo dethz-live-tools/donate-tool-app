@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from "react";
 import "./App.css";
-import { LogEntry, ServerState, SpotifyInfo } from "./types";
+import { LogEntry, ServerState, SpotifyInfo, SpotifyPlaylist } from "./types";
 import { Sidebar } from "./components/Sidebar";
 import { DashboardTab } from "./components/DashboardTab";
 import { ConfigTab } from "./components/ConfigTab";
@@ -41,6 +41,8 @@ export default function App() {
   const [spotifyClientId, setSpotifyClientId] = useState("");
   const [spotifyClientSecret, setSpotifyClientSecret] = useState("");
   const [savingSpotify, setSavingSpotify] = useState(false);
+  const [playlists, setPlaylists] = useState<SpotifyPlaylist[]>([]);
+  const [loadingPlaylists, setLoadingPlaylists] = useState(false);
 
   const eventSourceRef = useRef<EventSource | null>(null);
 
@@ -297,6 +299,39 @@ export default function App() {
     }
   }
 
+  async function handleFetchPlaylists() {
+    setLoadingPlaylists(true);
+    try {
+      const res = await fetch(`${API_BASE}/api/spotify/playlists`);
+      const data = await res.json();
+      if (data.success) {
+        setPlaylists(data.playlists || []);
+      } else if (data.error) {
+        setErrorMsg(`Playlists error: ${data.error}`);
+      }
+    } catch (err: any) {
+      setErrorMsg(`Failed to fetch playlists: ${err.message}`);
+    } finally {
+      setLoadingPlaylists(false);
+    }
+  }
+
+  async function handlePlayPlaylist(uri: string) {
+    try {
+      const res = await fetch(`${API_BASE}/api/spotify/player/play`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ context_uri: uri }),
+      });
+      const data = await res.json();
+      if (!data.success) {
+        setErrorMsg(`Spotify play error: ${data.error}`);
+      }
+    } catch (err: any) {
+      setErrorMsg(`Failed to play playlist: ${err.message}`);
+    }
+  }
+
   return (
     <div className="app-layout">
       {/* Sidebar Navigation */}
@@ -343,12 +378,16 @@ export default function App() {
             testing={testing}
             spotify={spotify}
             logs={logs}
+            playlists={playlists}
+            loadingPlaylists={loadingPlaylists}
             onConnect={() => handleConnect()}
             onDisconnect={handleDisconnect}
             onTestWebhook={handleTestWebhook}
             onClearLogs={() => setLogs([])}
             onRefreshSpotify={handleRefreshSpotify}
             onPlayerControl={handlePlayerControl}
+            onFetchPlaylists={handleFetchPlaylists}
+            onPlayPlaylist={handlePlayPlaylist}
             onGoToConfig={() => setCurrentPage("config")}
           />
         ) : (

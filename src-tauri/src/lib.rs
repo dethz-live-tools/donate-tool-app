@@ -1,14 +1,28 @@
+use std::path::Path;
 use std::process::Command;
 
 fn spawn_server() {
     let home = std::env::var("HOME").unwrap_or_default();
     let bun_home_path = format!("{}/.bun/bin/bun", home);
 
-    let _ = Command::new(&bun_home_path)
-        .arg("server.ts")
-        .spawn()
-        .or_else(|_| Command::new("bun").arg("server.ts").spawn())
-        .or_else(|_| Command::new("node").arg("server.ts").spawn());
+    let (server_path, working_dir) = if Path::new("server.ts").exists() {
+        ("server.ts", ".")
+    } else if Path::new("../server.ts").exists() {
+        ("../server.ts", "..")
+    } else {
+        ("server.ts", ".")
+    };
+
+    let try_spawn = |bin: &str| {
+        Command::new(bin)
+            .arg(server_path)
+            .current_dir(working_dir)
+            .spawn()
+    };
+
+    let _ = try_spawn(&bun_home_path)
+        .or_else(|_| try_spawn("bun"))
+        .or_else(|_| try_spawn("node"));
 }
 
 #[tauri::command]

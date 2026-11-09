@@ -216,6 +216,9 @@ export const ConfigTab: React.FC<ConfigTabProps> = ({
             >
               http://127.0.0.1:3001/api/spotify/callback
             </code>
+            <div style={{ marginTop: "6px", fontSize: "11px", color: "var(--ctp-lavender)" }}>
+              Includes permissions for player control, active playlist discovery, and full playback state. Click AUTHORIZE SPOTIFY to refresh scopes if granted previously.
+            </div>
           </div>
 
           <div className="btn-row">

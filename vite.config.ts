@@ -19,14 +19,29 @@ function bridgePlugin(): Plugin {
         })
         .catch(() => {
           console.log("[bridge] Auto-starting server.ts on port 3001...");
-          const runner = process.execPath || "bun";
-          proc = spawn(runner, ["server.ts"], {
-            stdio: "inherit",
-            env: process.env,
-          });
-          proc.on("error", (err: any) => {
-            console.error("[bridge] Failed to spawn server.ts:", err.message);
-          });
+          const cwd = server.config.root || process.cwd();
+          const bunPath = process.env.HOME ? `${process.env.HOME}/.bun/bin/bun` : "bun";
+          
+          try {
+            proc = spawn(bunPath, ["server.ts"], {
+              cwd,
+              stdio: "inherit",
+              env: process.env,
+            });
+            proc.on("error", () => {
+              proc = spawn(process.execPath || "node", ["server.ts"], {
+                cwd,
+                stdio: "inherit",
+                env: process.env,
+              });
+            });
+          } catch {
+            proc = spawn(process.execPath || "node", ["server.ts"], {
+              cwd,
+              stdio: "inherit",
+              env: process.env,
+            });
+          }
         });
 
       server.httpServer?.on("close", () => {

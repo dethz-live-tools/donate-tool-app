@@ -1,5 +1,5 @@
 import React from "react";
-import { LogEntry, SpotifyInfo } from "../types";
+import { LogEntry, SpotifyInfo, SpotifyPlaylist } from "../types";
 
 interface DashboardTabProps {
   username: string;
@@ -9,12 +9,16 @@ interface DashboardTabProps {
   testing: boolean;
   spotify: SpotifyInfo;
   logs: LogEntry[];
+  playlists?: SpotifyPlaylist[];
+  loadingPlaylists?: boolean;
   onConnect: () => void;
   onDisconnect: () => void;
   onTestWebhook: () => void;
   onClearLogs: () => void;
   onRefreshSpotify: () => void;
   onPlayerControl: (action: "play" | "pause" | "next" | "previous") => void;
+  onFetchPlaylists?: () => void;
+  onPlayPlaylist?: (uri: string) => void;
   onGoToConfig: () => void;
 }
 
@@ -34,12 +38,16 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({
   testing,
   spotify,
   logs,
+  playlists = [],
+  loadingPlaylists = false,
   onConnect,
   onDisconnect,
   onTestWebhook,
   onClearLogs,
   onRefreshSpotify,
   onPlayerControl,
+  onFetchPlaylists,
+  onPlayPlaylist,
   onGoToConfig,
 }) => {
   const track = spotify.currentTrack;
@@ -261,6 +269,60 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({
               Configuration
             </button>{" "}
             to connect your Spotify account.
+          </div>
+        )}
+
+        {/* User Playlists Drawer */}
+        {spotify.connected && (
+          <div className="spotify-playlist-section">
+            <div className="spotify-playlist-header">
+              <span className="mono-font" style={{ fontSize: "12px", fontWeight: "bold" }}>
+                USER PLAYLISTS ({playlists.length})
+              </span>
+              {onFetchPlaylists && (
+                <button
+                  type="button"
+                  className="ctrl-btn"
+                  onClick={onFetchPlaylists}
+                  disabled={loadingPlaylists}
+                >
+                  {loadingPlaylists ? "FETCHING..." : playlists.length ? "REFRESH LIST" : "GET PLAYLIST LIST"}
+                </button>
+              )}
+            </div>
+
+            {playlists.length > 0 && (
+              <div className="spotify-playlist-list">
+                {playlists.map((pl) => (
+                  <div key={pl.id} className="spotify-playlist-card">
+                    {pl.image ? (
+                      <img src={pl.image} alt={pl.name} className="spotify-playlist-cover" />
+                    ) : (
+                      <div className="spotify-playlist-cover">NO ART</div>
+                    )}
+                    <div className="spotify-playlist-meta">
+                      <span className="spotify-playlist-title" title={pl.name}>
+                        {pl.name}
+                      </span>
+                      <span className="spotify-playlist-count">
+                        {pl.totalTracks} TRACKS {pl.isPublic ? "• PUBLIC" : "• PRIVATE"}
+                      </span>
+                    </div>
+                    {onPlayPlaylist && (
+                      <button
+                        type="button"
+                        className="ctrl-btn"
+                        style={{ padding: "4px 8px", fontSize: "10px" }}
+                        onClick={() => onPlayPlaylist(pl.uri)}
+                        title={`Play ${pl.name}`}
+                      >
+                        ▶ PLAY
+                      </button>
+                    )}
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
         )}
       </section>
