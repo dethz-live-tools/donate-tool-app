@@ -16,7 +16,8 @@
     "@tauri-apps/plugin-opener": "^2",
     "react": "^19.1.0",
     "react-dom": "^19.1.0",
-    "tiktok-live-connector": "^2.5.0"
+    "tiktok-live-connector": "^2.5.0",
+    "yaml": "^2.9.1"
   },
   "devDependencies": {
     "@types/react": "^19.1.8",

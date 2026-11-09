@@ -1,0 +1,11 @@
+# TikTok Live Webhook Bridge Configuration
+tiktok:
+  username: "" # Streamer uniqueId (with or without @)
+
+webhook:
+  uri: "" # Target webhook endpoint receiving gift payload
+
+spotify:
+  client_id: "" # Spotify Developer App Client ID
+  client_secret: "" # Spotify Developer App Client Secret
+  refresh_token: "" # Generated automatically upon OAuth connection

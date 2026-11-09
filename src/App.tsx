@@ -1,36 +1,25 @@
 import React, { useState, useEffect, useRef } from "react";
 import "./App.css";
-
-interface WebhookPayload {
-  username: string;
-  giftName: string;
-  coins: number;
-}
-
-interface LogEntry {
-  id: string;
-  timestamp: string;
-  type: "gift" | "test" | "system";
-  payload: WebhookPayload;
-  webhookUri: string;
-  httpStatus?: number;
-  response?: string;
-  success: boolean;
-  error?: string;
-}
-
-interface ServerState {
-  username: string;
-  webhookUri: string;
-  status: "disconnected" | "connecting" | "connected" | "error";
-  roomId: string | null;
-  error: string | null;
-  logs: LogEntry[];
-}
+import { LogEntry, ServerState, SpotifyInfo } from "./types";
+import { Sidebar } from "./components/Sidebar";
+import { DashboardTab } from "./components/DashboardTab";
+import { ConfigTab } from "./components/ConfigTab";
 
 const API_BASE = "http://127.0.0.1:3001";
 
+async function openAuthorizeUrl(url: string) {
+  try {
+    const { openUrl } = await import("@tauri-apps/plugin-opener");
+    await openUrl(url);
+  } catch {
+    window.open(url, "_blank", "width=600,height=700");
+  }
+}
+
 export default function App() {
+  const [currentPage, setCurrentPage] = useState<"dashboard" | "config">("dashboard");
+
+  // TikTok & Webhook state
   const [username, setUsername] = useState("");
   const [webhookUri, setWebhookUri] = useState("");
   const [status, setStatus] = useState<"disconnected" | "connecting" | "connected" | "error">("disconnected");
@@ -40,6 +29,18 @@ export default function App() {
   const [loading, setLoading] = useState(false);
   const [testing, setTesting] = useState(false);
   const [testResult, setTestResult] = useState<string | null>(null);
+
+  // Spotify state
+  const [spotify, setSpotify] = useState<SpotifyInfo>({
+    clientId: "",
+    hasClientSecret: false,
+    connected: false,
+    currentTrack: null,
+    error: null,
+  });
+  const [spotifyClientId, setSpotifyClientId] = useState("");
+  const [spotifyClientSecret, setSpotifyClientSecret] = useState("");
+  const [savingSpotify, setSavingSpotify] = useState(false);
 
   const eventSourceRef = useRef<EventSource | null>(null);
 
@@ -54,11 +55,14 @@ export default function App() {
           if (data.webhookUri) setWebhookUri(data.webhookUri);
           setStatus(data.status);
           setRoomId(data.roomId);
-          setErrorMsg(data.error);
+          if (data.error) setErrorMsg(data.error);
           setLogs(data.logs || []);
+          if (data.spotify) {
+            setSpotify(data.spotify);
+            if (data.spotify.clientId) setSpotifyClientId(data.spotify.clientId);
+          }
         }
       } catch {
-        // Fallback relative path if running behind Vite proxy
         try {
           const res = await fetch("/api/status");
           if (res.ok) {
@@ -67,8 +71,12 @@ export default function App() {
             if (data.webhookUri) setWebhookUri(data.webhookUri);
             setStatus(data.status);
             setRoomId(data.roomId);
-            setErrorMsg(data.error);
+            if (data.error) setErrorMsg(data.error);
             setLogs(data.logs || []);
+            if (data.spotify) {
+              setSpotify(data.spotify);
+              if (data.spotify.clientId) setSpotifyClientId(data.spotify.clientId);
+            }
           }
         } catch {
           // Backend might still be starting
@@ -78,7 +86,6 @@ export default function App() {
 
     fetchStatus();
 
-    // Setup SSE for live reactive updates
     function connectSse() {
       try {
         const es = new EventSource(`${API_BASE}/api/events`);
@@ -89,8 +96,10 @@ export default function App() {
             const data: ServerState = JSON.parse(event.data);
             setStatus(data.status);
             setRoomId(data.roomId);
-            setErrorMsg(data.error);
             setLogs(data.logs || []);
+            if (data.spotify) {
+              setSpotify(data.spotify);
+            }
           } catch (e) {
             console.error("SSE parse error:", e);
           }
@@ -98,7 +107,6 @@ export default function App() {
 
         es.onerror = () => {
           es.close();
-          // Retry SSE after 3 seconds
           setTimeout(connectSse, 3000);
         };
       } catch (err) {
@@ -115,14 +123,16 @@ export default function App() {
     };
   }, []);
 
-  async function handleConnect(e: React.FormEvent) {
-    e.preventDefault();
+  async function handleConnect(e?: React.FormEvent) {
+    if (e) e.preventDefault();
     if (!username.trim()) {
-      setErrorMsg("TikTok username is required");
+      setErrorMsg("TikTok username is required. Configure it in Settings.");
+      setCurrentPage("config");
       return;
     }
     if (!webhookUri.trim()) {
-      setErrorMsg("Webhook URI is required");
+      setErrorMsg("Webhook URI is required. Configure it in Settings.");
+      setCurrentPage("config");
       return;
     }
 
@@ -158,9 +168,38 @@ export default function App() {
     }
   }
 
+  async function handleSaveConfig(e?: React.FormEvent) {
+    if (e) e.preventDefault();
+    setLoading(true);
+    setErrorMsg(null);
+    setTestResult(null);
+
+    try {
+      const res = await fetch(`${API_BASE}/api/config`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          username: username.trim(),
+          webhookUri: webhookUri.trim(),
+        }),
+      });
+      const data = await res.json();
+      if (data.success) {
+        setTestResult("Saved configuration to config.yaml");
+      } else {
+        setErrorMsg(data.error || "Failed to save configuration");
+      }
+    } catch (err: any) {
+      setErrorMsg(`Failed to save configuration: ${err.message}`);
+    } finally {
+      setLoading(false);
+    }
+  }
+
   async function handleTestWebhook() {
     if (!webhookUri.trim()) {
-      setErrorMsg("Please enter a Webhook URI to test");
+      setErrorMsg("Please enter a Webhook URI in Settings first");
+      setCurrentPage("config");
       return;
     }
 
@@ -192,216 +231,151 @@ export default function App() {
     }
   }
 
+  async function handleSaveSpotifyConfig(e: React.FormEvent) {
+    e.preventDefault();
+    if (!spotifyClientId.trim()) {
+      setErrorMsg("Spotify Client ID is required");
+      return;
+    }
+
+    setSavingSpotify(true);
+    setErrorMsg(null);
+
+    try {
+      const res = await fetch(`${API_BASE}/api/spotify/config`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          clientId: spotifyClientId.trim(),
+          clientSecret: spotifyClientSecret.trim(),
+        }),
+      });
+      const data = await res.json();
+      if (data.spotify) {
+        setSpotify(data.spotify);
+      }
+      setSavingSpotify(false);
+      await openAuthorizeUrl(`${API_BASE}/api/spotify/login`);
+    } catch (err: any) {
+      setErrorMsg(`Failed to save Spotify config: ${err.message}`);
+      setSavingSpotify(false);
+    }
+  }
+
+  async function handleRefreshSpotify() {
+    setLoading(true);
+    try {
+      const res = await fetch(`${API_BASE}/api/spotify/refresh`, { method: "POST" });
+      const data = await res.json();
+      if (data.spotify) {
+        setSpotify(data.spotify);
+      }
+    } catch (err: any) {
+      setErrorMsg(`Failed to refresh Spotify: ${err.message}`);
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function handleDisconnectSpotify() {
+    try {
+      await fetch(`${API_BASE}/api/spotify/disconnect`, { method: "POST" });
+    } catch (err: any) {
+      setErrorMsg(`Failed to disconnect Spotify: ${err.message}`);
+    }
+  }
+
+  async function handlePlayerControl(action: "play" | "pause" | "next" | "previous") {
+    try {
+      const res = await fetch(`${API_BASE}/api/spotify/player/${action}`, { method: "POST" });
+      const data = await res.json();
+      if (!data.success) {
+        setErrorMsg(`Spotify control error: ${data.error}`);
+      }
+    } catch (err: any) {
+      setErrorMsg(`Failed to send player command: ${err.message}`);
+    }
+  }
+
   return (
-    <div className="app-container">
-      {/* Brutalist RawBlock Header */}
-      <header className="app-header">
-        <div className="header-title-group">
-          <h1>TIKTOK LIVE // WEBHOOK</h1>
-          <div className="header-subtitle">
-            RAWBLOCK BRUTALIST // CATPPUCCIN MACCHIATO
-          </div>
-        </div>
+    <div className="app-layout">
+      {/* Sidebar Navigation */}
+      <Sidebar
+        currentPage={currentPage}
+        onSelectPage={setCurrentPage}
+        status={status}
+        roomId={roomId}
+        spotify={spotify}
+        track={spotify.currentTrack}
+      />
 
-        <div className={`status-chip ${status}`}>
-          <span className="status-dot"></span>
-          <span>
-            {status === "connected" && roomId ? `LIVE: ${roomId}` : status.toUpperCase()}
-          </span>
-        </div>
-      </header>
-
-      {/* Error / Alert Display */}
-      {errorMsg && (
-        <div className="alert-banner">
-          <span>[!]</span>
-          <span>{errorMsg}</span>
-        </div>
-      )}
-
-      {testResult && (
-        <div className="alert-banner success">
-          <span>[OK]</span>
-          <span>{testResult}</span>
-        </div>
-      )}
-
-      {/* Main Configuration Card */}
-      <section className="raw-card elevated">
-        <div className="card-title">
-          <h2>CONFIGURATION & CONNECTION</h2>
-          <span className="mono-font" style={{ fontSize: "12px", color: "var(--ctp-subtext0)" }}>
-            TIKTOK-LIVE-CONNECTOR
-          </span>
-        </div>
-
-        <form onSubmit={handleConnect} style={{ display: "flex", flexDirection: "column", gap: "16px" }}>
-          <div className="form-group">
-            <label className="form-label" htmlFor="tiktok-username">
-              TIKTOK USERNAME
-            </label>
-            <input
-              id="tiktok-username"
-              className="raw-input"
-              type="text"
-              placeholder="e.g. streamer_name (without or with @)"
-              value={username}
-              onChange={(e) => setUsername(e.target.value)}
-              disabled={status === "connected" || status === "connecting"}
-            />
-            <span className="form-helper">
-              Username of the TikTok account currently broadcasting live.
-            </span>
-          </div>
-
-          <div className="form-group">
-            <label className="form-label" htmlFor="webhook-uri">
-              WEBHOOK TARGET URI
-            </label>
-            <input
-              id="webhook-uri"
-              className="raw-input"
-              type="url"
-              placeholder="https://your-server.com/api/webhook"
-              value={webhookUri}
-              onChange={(e) => setWebhookUri(e.target.value)}
-            />
-            <span className="form-helper">
-              Endpoint that receives HTTP POST requests when gifts are sent.
-            </span>
-          </div>
-
-          <div className="btn-row">
-            {status === "connected" || status === "connecting" ? (
-              <button
-                type="button"
-                className="btn btn-destructive"
-                onClick={handleDisconnect}
-                disabled={loading}
-              >
-                DISCONNECT STREAM
-              </button>
-            ) : (
-              <button
-                type="submit"
-                className="btn btn-primary"
-                disabled={loading}
-              >
-                {loading ? "CONNECTING..." : "CONNECT TO TIKTOK LIVE"}
-              </button>
-            )}
-
+      {/* Main Page Content */}
+      <main className="app-content">
+        {/* Global Alerts */}
+        {errorMsg && (
+          <div className="alert-banner">
+            <span>[!]</span>
+            <span>{errorMsg}</span>
             <button
               type="button"
               className="btn btn-secondary"
-              onClick={handleTestWebhook}
-              disabled={testing || !webhookUri.trim()}
+              style={{ padding: "2px 8px", fontSize: "11px", marginLeft: "auto" }}
+              onClick={() => setErrorMsg(null)}
             >
-              {testing ? "SENDING..." : "SEND TEST WEBHOOK"}
+              DISMISS
             </button>
           </div>
-        </form>
-      </section>
+        )}
 
-      {/* Payload Schema Card */}
-      <section className="raw-card">
-        <div className="card-title">
-          <h3>DISPATCH PAYLOAD SPECIFICATION</h3>
-          <span className="mono-font" style={{ fontSize: "12px", color: "var(--ctp-lavender)" }}>
-            APPLICATION/JSON
-          </span>
-        </div>
-        <p style={{ fontSize: "13px", color: "var(--ctp-subtext0)" }}>
-          Every gift event automatically posts this schema to the configured Webhook URI:
-        </p>
-        <pre className="code-preview">
-{JSON.stringify(
-  {
-    username: "gifter_name",
-    giftName: "Rose",
-    coins: 20,
-  },
-  null,
-  2
-)}
-        </pre>
-      </section>
-
-      {/* Activity Log Card */}
-      <section className="raw-card">
-        <div className="card-title">
-          <h3>WEBHOOK DISPATCH LOGS ({logs.length})</h3>
-          <button
-            type="button"
-            className="btn btn-secondary"
-            style={{ padding: "4px 10px", fontSize: "11px" }}
-            onClick={() => setLogs([])}
-          >
-            CLEAR LOGS
-          </button>
-        </div>
-
-        {logs.length === 0 ? (
-          <div className="empty-state">
-            [ NO DISPATCHES RECORDED YET ]
-            <br />
-            Connect to a stream or click &quot;SEND TEST WEBHOOK&quot; to test.
-          </div>
-        ) : (
-          <div className="logs-list">
-            {logs.map((log) => (
-              <div
-                key={log.id}
-                className={`log-item ${log.success ? "success" : "failed"}`}
-              >
-                <div className="log-header">
-                  <div>
-                    <span
-                      className="log-type-tag"
-                      style={{
-                        color: log.type === "test" ? "var(--ctp-lavender)" : "var(--ctp-mauve)",
-                        marginRight: "8px",
-                      }}
-                    >
-                      {log.type}
-                    </span>
-                    <span className="log-time">{log.timestamp}</span>
-                  </div>
-
-                  <span className={`log-val ${log.success ? "success" : "error"}`}>
-                    {log.success
-                      ? `STATUS ${log.httpStatus || 200} OK`
-                      : log.error || `FAILED (${log.httpStatus || "ERR"})`}
-                  </span>
-                </div>
-
-                <div className="log-body">
-                  <div className="log-line">
-                    <span className="log-key">PAYLOAD:</span>
-                    <span className="log-val">
-                      {JSON.stringify(log.payload)}
-                    </span>
-                  </div>
-                  <div className="log-line">
-                    <span className="log-key">TARGET:</span>
-                    <span className="log-val" style={{ color: "var(--ctp-blue)" }}>
-                      {log.webhookUri}
-                    </span>
-                  </div>
-                  {log.response && (
-                    <div className="log-line">
-                      <span className="log-key">RESPONSE:</span>
-                      <span className="log-val" style={{ color: "var(--ctp-subtext0)" }}>
-                        {log.response}
-                      </span>
-                    </div>
-                  )}
-                </div>
-              </div>
-            ))}
+        {testResult && (
+          <div className="alert-banner success">
+            <span>[OK]</span>
+            <span>{testResult}</span>
           </div>
         )}
-      </section>
+
+        {currentPage === "dashboard" ? (
+          <DashboardTab
+            username={username}
+            webhookUri={webhookUri}
+            status={status}
+            loading={loading}
+            testing={testing}
+            spotify={spotify}
+            logs={logs}
+            onConnect={() => handleConnect()}
+            onDisconnect={handleDisconnect}
+            onTestWebhook={handleTestWebhook}
+            onClearLogs={() => setLogs([])}
+            onRefreshSpotify={handleRefreshSpotify}
+            onPlayerControl={handlePlayerControl}
+            onGoToConfig={() => setCurrentPage("config")}
+          />
+        ) : (
+          <ConfigTab
+            username={username}
+            setUsername={setUsername}
+            webhookUri={webhookUri}
+            setWebhookUri={setWebhookUri}
+            status={status}
+            loading={loading}
+            testing={testing}
+            spotify={spotify}
+            spotifyClientId={spotifyClientId}
+            setSpotifyClientId={setSpotifyClientId}
+            spotifyClientSecret={spotifyClientSecret}
+            setSpotifyClientSecret={setSpotifyClientSecret}
+            savingSpotify={savingSpotify}
+            onSaveConfig={handleSaveConfig}
+            onConnect={handleConnect}
+            onDisconnect={handleDisconnect}
+            onTestWebhook={handleTestWebhook}
+            onSaveSpotifyConfig={handleSaveSpotifyConfig}
+            onRefreshSpotify={handleRefreshSpotify}
+            onDisconnectSpotify={handleDisconnectSpotify}
+          />
+        )}
+      </main>
     </div>
   );
 }
