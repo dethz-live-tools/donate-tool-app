@@ -5,12 +5,12 @@ fn spawn_server() {
     let home = std::env::var("HOME").unwrap_or_default();
     let bun_home_path = format!("{}/.bun/bin/bun", home);
 
-    let (server_path, working_dir) = if Path::new("server.ts").exists() {
-        ("server.ts", ".")
-    } else if Path::new("../server.ts").exists() {
-        ("../server.ts", "..")
+    let (server_path, working_dir) = if Path::new("server/index.ts").exists() {
+        ("server/index.ts", ".")
+    } else if Path::new("../server/index.ts").exists() {
+        ("../server/index.ts", "..")
     } else {
-        ("server.ts", ".")
+        ("server/index.ts", ".")
     };
 
     let try_spawn = |bin: &str| {

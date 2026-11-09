@@ -18,25 +18,25 @@ function bridgePlugin(): Plugin {
           console.log("[bridge] Backend already running on port 3001.");
         })
         .catch(() => {
-          console.log("[bridge] Auto-starting server.ts on port 3001...");
+          console.log("[bridge] Auto-starting server/index.ts on port 3001...");
           const cwd = server.config.root || process.cwd();
           const bunPath = process.env.HOME ? `${process.env.HOME}/.bun/bin/bun` : "bun";
           
           try {
-            proc = spawn(bunPath, ["server.ts"], {
+            proc = spawn(bunPath, ["server/index.ts"], {
               cwd,
               stdio: "inherit",
               env: process.env,
             });
             proc.on("error", () => {
-              proc = spawn(process.execPath || "node", ["server.ts"], {
+              proc = spawn(process.execPath || "node", ["server/index.ts"], {
                 cwd,
                 stdio: "inherit",
                 env: process.env,
               });
             });
           } catch {
-            proc = spawn(process.execPath || "node", ["server.ts"], {
+            proc = spawn(process.execPath || "node", ["server/index.ts"], {
               cwd,
               stdio: "inherit",
               env: process.env,

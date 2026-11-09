@@ -4,7 +4,7 @@ import path from "node:path";
 import fs from "node:fs";
 
 const rootDir = process.cwd();
-const serverFile = path.join(rootDir, "server.ts");
+const serverFile = path.join(rootDir, "server", "index.ts");
 const viteBin = path.join(rootDir, "node_modules", ".bin", "vite");
 
 let serverProc: ChildProcess | null = null;
@@ -52,7 +52,7 @@ async function start() {
   const alreadyRunning = await isServerRunning();
 
   if (!alreadyRunning) {
-    console.log("\x1b[36m[dev] Starting backend server (server.ts)...\x1b[0m");
+    console.log("\x1b[36m[dev] Starting backend server (server/index.ts)...\x1b[0m");
     try {
       serverProc = spawn(bunBin, [serverFile], {
         cwd: rootDir,
@@ -61,7 +61,7 @@ async function start() {
       });
 
       serverProc.on("error", () => {
-        console.log("\x1b[33m[dev] Falling back to node for server.ts...\x1b[0m");
+        console.log("\x1b[33m[dev] Falling back to node for server/index.ts...\x1b[0m");
         serverProc = spawn(process.execPath || "node", [serverFile], {
           cwd: rootDir,
           stdio: "inherit",
