@@ -1,0 +1,16 @@
+{
+  "formats": [
+    "agents"
+  ],
+  "installedRules": [
+    "rules/kizuna-inc/kz-rule:99521e5/rules/keep-submodules.md",
+    "rules/kizuna-inc/kz-rule:99521e5/rules/release-note.md",
+    "rules/kizuna-inc/kz-rule:99521e5/rules/use-bun.md",
+    "rules/kizuna-inc/kz-rule:99521e5/rules/version-bump.md"
+  ],
+  "installedSkills": [
+    "skill/kizuna-inc/kz-skill:b9a462a/auto-mode",
+    "skill/kizuna-inc/kz-skill:b9a462a/released-bump",
+    "skill/kizuna-inc/kz-skill:b9a462a/workspace-allow"
+  ]
+}
