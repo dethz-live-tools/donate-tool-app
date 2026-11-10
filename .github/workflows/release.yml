@@ -1,0 +1,167 @@
+name: Release
+
+on:
+  push:
+    branches:
+      - main
+    tags:
+      - 'v*'
+  workflow_dispatch:
+    inputs:
+      force_release:
+        description: 'Force release even if tag exists'
+        required: false
+        type: boolean
+        default: false
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  check-version:
+    name: Check Version & Tag Status
+    runs-on: ubuntu-latest
+    outputs:
+      should_release: ${{ steps.check.outputs.should_release }}
+      version: ${{ steps.check.outputs.version }}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Inspect version and tags
+        id: check
+        shell: bash
+        run: |
+          git fetch --tags --force || true
+
+          # If triggered directly by a tag push (v*)
+          if [[ "${{ github.ref }}" == refs/tags/v* ]]; then
+            VERSION="${GITHUB_REF_NAME#v}"
+            echo "should_release=true" >> "$GITHUB_OUTPUT"
+            echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+            echo "Release triggered by tag: v$VERSION"
+            exit 0
+          fi
+
+          # Extract version from tauri.conf.json or package.json
+          VERSION=$(node -p "try { require('./src-tauri/tauri.conf.json').version } catch(e) { require('./package.json').version }")
+          echo "Detected project version: $VERSION"
+          TAG="v$VERSION"
+
+          # Check if tag already exists in git
+          if git rev-parse "$TAG" >/dev/null 2>&1; then
+            echo "Tag $TAG already exists."
+            if [ "${{ github.event.inputs.force_release }}" = "true" ]; then
+              echo "Force release requested via manual dispatch."
+              echo "should_release=true" >> "$GITHUB_OUTPUT"
+              echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+            else
+              echo "Version $VERSION already released. Skipping release build."
+              echo "should_release=false" >> "$GITHUB_OUTPUT"
+              echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+            fi
+          else
+            echo "New version detected: $TAG not yet released. Triggering multi-OS build."
+            echo "should_release=true" >> "$GITHUB_OUTPUT"
+            echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          fi
+
+  publish:
+    name: Build & Release (${{ matrix.platform }}${{ matrix.arch && format(' - {0}', matrix.arch) || '' }})
+    needs: check-version
+    if: needs.check-version.outputs.should_release == 'true'
+    permissions:
+      contents: write
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - platform: 'macos-latest'
+            arch: 'Apple Silicon (aarch64)'
+            args: '--target aarch64-apple-darwin'
+          - platform: 'macos-latest'
+            arch: 'Intel (x86_64)'
+            args: '--target x86_64-apple-darwin'
+          - platform: 'ubuntu-22.04'
+            arch: 'Linux (x86_64)'
+            args: ''
+          - platform: 'windows-latest'
+            arch: 'Windows (x86_64)'
+            args: ''
+
+    runs-on: ${{ matrix.platform }}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: lts/*
+
+      - name: Install Rust stable
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.platform == 'macos-latest' && 'aarch64-apple-darwin,x86_64-apple-darwin' || '' }}
+
+      - name: Rust cache
+        uses: swatinem/rust-cache@v2
+        with:
+          workspaces: './src-tauri -> target'
+
+      - name: Install Linux build dependencies
+        if: matrix.platform == 'ubuntu-22.04'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            libwebkit2gtk-4.1-dev \
+            libappindicator3-dev \
+            librsvg2-dev \
+            patchelf \
+            xdg-utils \
+            libasound2-dev \
+            libssl-dev
+
+      - name: Install frontend dependencies
+        run: bun install --frozen-lockfile
+
+      - name: Resolve Release Notes
+        id: release_notes
+        shell: bash
+        run: |
+          VERSION="${{ needs.check-version.outputs.version }}"
+          if [ -f "RELEASED_NOTE/${VERSION}.md" ]; then
+            EOF=$(dd if=/dev/urandom bs=15 count=1 status=none | base64)
+            echo "BODY<<$EOF" >> "$GITHUB_OUTPUT"
+            cat "RELEASED_NOTE/${VERSION}.md" >> "$GITHUB_OUTPUT"
+            echo "$EOF" >> "$GITHUB_OUTPUT"
+          elif [ -f "RELEASED_NOTE/v${VERSION}.md" ]; then
+            EOF=$(dd if=/dev/urandom bs=15 count=1 status=none | base64)
+            echo "BODY<<$EOF" >> "$GITHUB_OUTPUT"
+            cat "RELEASED_NOTE/v${VERSION}.md" >> "$GITHUB_OUTPUT"
+            echo "$EOF" >> "$GITHUB_OUTPUT"
+          else
+            echo "BODY=Release v${VERSION}. Download installation assets below for macOS, Windows, and Linux." >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Build Tauri and Publish GitHub Release
+        uses: tauri-apps/tauri-action@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+        with:
+          tagName: v__VERSION__
+          releaseName: 'v__VERSION__'
+          releaseBody: ${{ steps.release_notes.outputs.BODY }}
+          releaseDraft: false
+          prerelease: false
+          args: ${{ matrix.args }}
