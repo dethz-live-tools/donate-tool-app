@@ -38,6 +38,7 @@ export const state: ServerState = {
   },
   recentChats: [],
   songRequests: [],
+  config: initialConfig,
 };
 
 export const spotifyState: SpotifyState = {
@@ -67,6 +68,7 @@ export function broadcastState() {
     spotify: state.spotify,
     recentChats: state.recentChats,
     songRequests: state.songRequests,
+    config: state.config,
   });
 
   const message = `data: ${data}\n\n`;

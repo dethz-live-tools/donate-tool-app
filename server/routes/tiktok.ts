@@ -1,10 +1,10 @@
 import type http from "node:http";
-import { saveConfig } from "../config.ts";
+import { loadConfig, saveConfig } from "../config.ts";
 import { resetSpotifyWebhookTracker } from "../services/spotify.ts";
 import { connectLive, disconnectLive } from "../services/tiktok.ts";
 import { sendWebhook } from "../services/webhook.ts";
 import { broadcastChat, broadcastState, state } from "../state.ts";
-import type { TikTokChatMessage, WebhookPayload } from "../types.ts";
+import type { TikTokChatMessage, TikTokTtsPayload, WebhookPayload } from "../types.ts";
 import { parseJsonBody, sendJson } from "../utils.ts";
 
 export async function handleTiktokRoutes(
@@ -39,10 +39,34 @@ export async function handleTiktokRoutes(
         saveConfig({ webhookUri: state.webhookUri });
         resetSpotifyWebhookTracker();
       }
+
+      // Check if test requested is tts or gift
+      if (parsed.type === "tts" || parsed.event === "tts") {
+        const ttsPayload: TikTokTtsPayload = {
+          event: "tts",
+          username: String(parsed.username || "test_viewer"),
+          nickname: String(parsed.nickname || "Test Viewer"),
+          comment: String(parsed.comment || "สวัสดีครับ ทดสอบระบบ TTS"),
+          text: String(parsed.text || "Test Viewer says สวัสดีครับ ทดสอบระบบ TTS"),
+          voice: String(parsed.voice || "th-TH-NiwatNeural"),
+          timestamp: Date.now(),
+        };
+        const result = await sendWebhook(ttsPayload, "tts");
+        sendJson(res, 200, { success: result.success, entry: result });
+        return true;
+      }
+
       const payload: WebhookPayload = {
+        event: "tiktok_gift",
         username: String(parsed.username || "gifter_name"),
+        nickname: String(parsed.nickname || parsed.username || "Gifter Name"),
         giftName: String(parsed.giftName || "Rose"),
         coins: Number(parsed.coins) || 20,
+        diamondCount: 1,
+        repeatCount: Number(parsed.repeatCount) || 20,
+        giftId: 5655,
+        userId: "test_gifter_id",
+        timestamp: Date.now(),
       };
 
       const result = await sendWebhook(payload, "test");
@@ -77,6 +101,22 @@ export async function handleTiktokRoutes(
 
       broadcastChat(chatPayload);
       broadcastState();
+
+      // If sendWebhook or config sendTtsWebhook is active, dispatch webhook
+      const cfg = loadConfig();
+      const shouldSendWebhook = Boolean(parsed.sendWebhook ?? cfg.tts?.sendWebhook ?? cfg.sendTtsWebhook);
+      if (shouldSendWebhook) {
+        const ttsPayload: TikTokTtsPayload = {
+          event: "tts",
+          username: uniqueId,
+          nickname,
+          comment,
+          text: `${nickname} says ${comment}`,
+          voice: cfg.tts?.voice || "th-TH-NiwatNeural",
+          timestamp: Date.now(),
+        };
+        sendWebhook(ttsPayload, "tts").catch((e) => console.error("[test-chat] Webhook send error:", e));
+      }
 
       sendJson(res, 200, { success: true, chat: chatPayload });
     } catch (err: any) {

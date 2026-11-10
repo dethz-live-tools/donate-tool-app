@@ -132,7 +132,16 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({
   onClearChats,
   onGoToConfig,
 }) => {
-  // Panel minimization state (persisted in localStorage)
+  // Helper to persist settings to server config.yaml
+  const saveAppConfig = React.useCallback((updates: any) => {
+    fetch("http://127.0.0.1:3001/api/config", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(updates),
+    }).catch((err) => console.error("Failed to save config to config.yaml:", err));
+  }, []);
+
+  // Panel minimization state (persisted in config.yaml and localStorage)
   const [minimized, setMinimized] = React.useState<Record<string, boolean>>(() => {
     try {
       const saved = localStorage.getItem("donate_socket_minimized_boxes");
@@ -148,6 +157,7 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({
       try {
         localStorage.setItem("donate_socket_minimized_boxes", JSON.stringify(updated));
       } catch {}
+      saveAppConfig({ ui: { minimizedBoxes: updated } });
       return updated;
     });
   };
@@ -157,6 +167,7 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({
     try {
       localStorage.setItem("donate_socket_minimized_boxes", JSON.stringify({}));
     } catch {}
+    saveAppConfig({ ui: { minimizedBoxes: {} } });
   };
 
   const minimizeAll = () => {
@@ -172,6 +183,7 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({
     try {
       localStorage.setItem("donate_socket_minimized_boxes", JSON.stringify(all));
     } catch {}
+    saveAppConfig({ ui: { minimizedBoxes: all } });
   };
 
   const minimizedCount = Object.values(minimized).filter(Boolean).length;
@@ -271,26 +283,52 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({
       return true;
     }
   });
+  const [sendTtsWebhook, setSendTtsWebhook] = React.useState<boolean>(() => {
+    try {
+      return localStorage.getItem("donate_socket_tts_send_webhook") === "true";
+    } catch {
+      return false;
+    }
+  });
   const [showTtsSettings, setShowTtsSettings] = React.useState<boolean>(false);
   const [availableVoices, setAvailableVoices] = React.useState<EdgeTtsVoice[]>(FALLBACK_EDGE_VOICES);
 
-  // Load available Edge TTS voices from server
+  // Load available Edge TTS voices and initial config.yaml from server
   React.useEffect(() => {
     let active = true;
-    const fetchVoices = async () => {
-      try {
-        const res = await fetch("http://127.0.0.1:3001/api/tts/voices");
-        if (res.ok) {
-          const data = await res.json();
-          if (active && Array.isArray(data.voices) && data.voices.length > 0) {
-            setAvailableVoices(data.voices);
-          }
+
+    // Load available voices
+    fetch("http://127.0.0.1:3001/api/tts/voices")
+      .then((res) => (res.ok ? res.json() : null))
+      .then((data) => {
+        if (active && data && Array.isArray(data.voices) && data.voices.length > 0) {
+          setAvailableVoices(data.voices);
         }
-      } catch (err) {
-        console.warn("[TTS] Could not load Edge TTS voices from server, using fallback:", err);
-      }
-    };
-    fetchVoices();
+      })
+      .catch((err) => console.warn("[TTS] Could not load Edge TTS voices from server:", err));
+
+    // Load config from config.yaml
+    fetch("http://127.0.0.1:3001/api/config")
+      .then((res) => (res.ok ? res.json() : null))
+      .then((cfg) => {
+        if (!active || !cfg) return;
+        if (cfg.ui?.minimizedBoxes) {
+          setMinimized((prev) => ({ ...prev, ...cfg.ui.minimizedBoxes }));
+        }
+        if (cfg.tts) {
+          if (typeof cfg.tts.enabled === "boolean") setTtsEnabled(cfg.tts.enabled);
+          if (cfg.tts.voice) setTtsVoice(cfg.tts.voice);
+          if (typeof cfg.tts.volume === "number") setTtsVolume(cfg.tts.volume);
+          if (typeof cfg.tts.rate === "number") setTtsRate(cfg.tts.rate);
+          if (typeof cfg.tts.pitch === "number") setTtsPitch(cfg.tts.pitch);
+          if (cfg.tts.template) setTtsTemplate(cfg.tts.template);
+          if (typeof cfg.tts.ignoreBotCommands === "boolean") setIgnoreBotCommands(cfg.tts.ignoreBotCommands);
+          if (typeof cfg.tts.sendWebhook === "boolean") setSendTtsWebhook(cfg.tts.sendWebhook);
+        }
+        if (typeof cfg.sendTtsWebhook === "boolean") setSendTtsWebhook(cfg.sendTtsWebhook);
+      })
+      .catch((err) => console.warn("[Config] Could not load config.yaml:", err));
+
     return () => {
       active = false;
     };
@@ -438,6 +476,7 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({
     try {
       localStorage.setItem("donate_socket_tts_enabled", String(next));
     } catch {}
+    saveAppConfig({ tts: { enabled: next } });
     if (next) {
       speakMessage("เปิดระบบอ่านข้อความเสียงภาษาไทยแล้วครับ");
     } else {
@@ -445,8 +484,29 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({
     }
   };
 
+  const handleTestTtsWebhook = async () => {
+    try {
+      const res = await fetch("http://127.0.0.1:3001/api/test-webhook", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          type: "tts",
+          username: "viewer_pro",
+          nickname: "Viewer Pro",
+          comment: "สวัสดีครับ สตรีมเมอร์ ทดสอบระบบ TTS Webhook",
+          voice: ttsVoice,
+        }),
+      });
+      const data = await res.json();
+      if (data.success) {
+        speakMessage("ส่งข้อความ TTS Webhook สำเร็จแล้วครับ");
+      }
+    } catch (err) {
+      console.error("Test TTS webhook failed:", err);
+    }
+  };
 
-  const [payloadSpecTab, setPayloadSpecTab] = React.useState<"tiktok" | "spotify">("tiktok");
+  const [payloadSpecTab, setPayloadSpecTab] = React.useState<"tiktok" | "tts" | "spotify">("tiktok");
   const track = spotify.currentTrack;
   const progressPercent =
     track && track.durationMs > 0
@@ -1164,6 +1224,15 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({
                     + TEST CHAT
                   </button>
                 )}
+                <button
+                  type="button"
+                  className="btn btn-secondary"
+                  style={{ padding: "6px 12px", fontSize: "11px" }}
+                  onClick={handleTestTtsWebhook}
+                  title="Send a test TTS webhook payload (event: tts) to configured webhook URI"
+                >
+                  + TEST TTS WEBHOOK
+                </button>
                 {recentChats.length > 0 && onClearChats && (
                   <button
                     type="button"
@@ -1191,10 +1260,12 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({
                     style={{ padding: "6px", fontSize: "12px" }}
                     value={ttsVoice}
                     onChange={(e) => {
-                      setTtsVoice(e.target.value);
+                      const v = e.target.value;
+                      setTtsVoice(v);
                       try {
-                        localStorage.setItem("donate_socket_tts_voice", e.target.value);
+                        localStorage.setItem("donate_socket_tts_voice", v);
                       } catch {}
+                      saveAppConfig({ tts: { voice: v } });
                     }}
                   >
                     {availableVoices.length === 0 ? (
@@ -1229,6 +1300,7 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({
                       try {
                         localStorage.setItem("donate_socket_tts_vol", String(v));
                       } catch {}
+                      saveAppConfig({ tts: { volume: v } });
                     }}
                   />
                 </div>
@@ -1252,6 +1324,7 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({
                       try {
                         localStorage.setItem("donate_socket_tts_rate", String(v));
                       } catch {}
+                      saveAppConfig({ tts: { rate: v } });
                     }}
                   />
                 </div>
@@ -1275,6 +1348,7 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({
                       try {
                         localStorage.setItem("donate_socket_tts_pitch", String(v));
                       } catch {}
+                      saveAppConfig({ tts: { pitch: v } });
                     }}
                   />
                 </div>
@@ -1289,10 +1363,12 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({
                     style={{ padding: "6px", fontSize: "12px" }}
                     value={ttsTemplate}
                     onChange={(e) => {
-                      setTtsTemplate(e.target.value);
+                      const v = e.target.value;
+                      setTtsTemplate(v);
                       try {
-                        localStorage.setItem("donate_socket_tts_template", e.target.value);
+                        localStorage.setItem("donate_socket_tts_template", v);
                       } catch {}
+                      saveAppConfig({ tts: { template: v } });
                     }}
                   >
                     <option value="{comment}">Comment Only (&quot;Hello&quot;)</option>
@@ -1308,13 +1384,34 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({
                       type="checkbox"
                       checked={ignoreBotCommands}
                       onChange={(e) => {
-                        setIgnoreBotCommands(e.target.checked);
+                        const v = e.target.checked;
+                        setIgnoreBotCommands(v);
                         try {
-                          localStorage.setItem("donate_socket_tts_ignore_cmd", String(e.target.checked));
+                          localStorage.setItem("donate_socket_tts_ignore_cmd", String(v));
                         } catch {}
+                        saveAppConfig({ tts: { ignoreBotCommands: v } });
                       }}
                     />
                     <span>Ignore bot commands (starts with &quot;!&quot;)</span>
+                  </label>
+                </div>
+
+                {/* Send TTS / Chat to Webhook Checkbox */}
+                <div className="tts-setting-item" style={{ justifyContent: "center" }}>
+                  <label style={{ display: "flex", alignItems: "center", gap: "8px", cursor: "pointer", fontSize: "12px" }}>
+                    <input
+                      type="checkbox"
+                      checked={sendTtsWebhook}
+                      onChange={(e) => {
+                        const v = e.target.checked;
+                        setSendTtsWebhook(v);
+                        try {
+                          localStorage.setItem("donate_socket_tts_send_webhook", String(v));
+                        } catch {}
+                        saveAppConfig({ sendTtsWebhook: v, tts: { sendWebhook: v } });
+                      }}
+                    />
+                    <span>Send incoming chats to Webhook (event: &quot;tts&quot;)</span>
                   </label>
                 </div>
               </div>
@@ -1391,6 +1488,14 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({
                 </button>
                 <button
                   type="button"
+                  className={`btn ${payloadSpecTab === "tts" ? "btn-primary" : "btn-secondary"}`}
+                  style={{ padding: "2px 8px", fontSize: "11px" }}
+                  onClick={() => setPayloadSpecTab("tts")}
+                >
+                  TIKTOK CHAT / TTS
+                </button>
+                <button
+                  type="button"
                   className={`btn ${payloadSpecTab === "spotify" ? "btn-primary" : "btn-secondary"}`}
                   style={{ padding: "2px 8px", fontSize: "11px" }}
                   onClick={() => setPayloadSpecTab("spotify")}
@@ -1416,13 +1521,29 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({
 {payloadSpecTab === "tiktok"
   ? JSON.stringify(
       {
+        event: "tiktok_gift",
         username: "gifter_name",
+        nickname: "Gifter Name",
         giftName: "Rose",
         coins: 20,
         diamondCount: 1,
         repeatCount: 20,
         giftId: 5655,
         userId: "123456789",
+        timestamp: 1715000000000,
+      },
+      null,
+      2
+    )
+  : payloadSpecTab === "tts"
+  ? JSON.stringify(
+      {
+        event: "tts",
+        username: "viewer_pro",
+        nickname: "Viewer Pro",
+        comment: "สวัสดีครับ สตรีมเมอร์ สู้ๆ นะครับ",
+        text: "Viewer Pro says สวัสดีครับ สตรีมเมอร์ สู้ๆ นะครับ",
+        voice: "th-TH-NiwatNeural",
         timestamp: 1715000000000,
       },
       null,

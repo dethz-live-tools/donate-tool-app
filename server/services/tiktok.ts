@@ -4,9 +4,9 @@ import {
   TikTokLiveConnection,
   WebcastEvent,
 } from "tiktok-live-connector";
-import { saveConfig } from "../config.ts";
+import { loadConfig, saveConfig } from "../config.ts";
 import { broadcastChat, broadcastState, spotifyState, state } from "../state.ts";
-import type { TikTokChatMessage, TikTokGiftPayload } from "../types.ts";
+import type { TikTokChatMessage, TikTokGiftPayload, TikTokTtsPayload } from "../types.ts";
 import { requestSong } from "./spotify.ts";
 import { sendWebhook } from "./webhook.ts";
 
@@ -175,6 +175,34 @@ export async function connectLive(username?: string, webhookUri?: string) {
       broadcastChat(chatPayload);
       broadcastState();
 
+      // Check if TTS webhook is enabled
+      const cfg = loadConfig();
+      const sendTtsWebhook = Boolean(cfg.tts?.sendWebhook ?? cfg.sendTtsWebhook);
+      const ignoreBotCommands = Boolean(cfg.tts?.ignoreBotCommands ?? true);
+      const isCmd = comment.startsWith("!");
+
+      if (sendTtsWebhook && (!ignoreBotCommands || !isCmd)) {
+        const template = cfg.tts?.template || "{nickname} says {comment}";
+        const speechText = template
+          .replace("{nickname}", nickname)
+          .replace("{username}", uniqueId)
+          .replace("{comment}", comment);
+
+        const ttsPayload: TikTokTtsPayload = {
+          event: "tts",
+          username: uniqueId,
+          nickname,
+          comment,
+          text: speechText,
+          voice: cfg.tts?.voice || "th-TH-NiwatNeural",
+          timestamp: Date.now(),
+        };
+
+        sendWebhook(ttsPayload, "tts").catch((err) => {
+          console.error("[tiktok-chat] TTS webhook dispatch error:", err);
+        });
+      }
+
       // Check for song request command: !sr <song> or !request <song>
       const lower = comment.toLowerCase();
       const srPrefixes = ["!sr ", "!songrequest ", "!request ", "!song "];
@@ -261,6 +289,7 @@ export async function connectLive(username?: string, webhookUri?: string) {
         null;
 
       const payload: TikTokGiftPayload = {
+        event: "tiktok_gift",
         username: uniqueId,
         nickname,
         giftName,
@@ -274,31 +303,31 @@ export async function connectLive(username?: string, webhookUri?: string) {
         timestamp: Date.now(),
       };
 
-      // Handle combo / streak gifts (giftType === 1)
-      if (giftType === 1) {
-        const streakKey = `${payload.userId || uniqueId}_${data.giftId || giftName}`;
+      const streakKey = `${payload.userId || uniqueId}_${data.giftId || giftName}`;
 
-        if (isRepeatEnd) {
-          // Streak completed
-          const existing = activeStreaks.get(streakKey);
-          if (existing) {
-            clearTimeout(existing.timer);
-            activeStreaks.delete(streakKey);
-          }
-          sendWebhook(payload, "gift").catch((err) => {
-            console.error("[tiktok] Webhook dispatch error:", err);
-          });
-          return;
-        }
+      // A gift is part of an ongoing combo if:
+      // 1) repeatEnd is explicitly false / 0, OR
+      // 2) giftType is 1 and !isRepeatEnd, OR
+      // 3) repeatCount is greater than 1 and !isRepeatEnd
+      const isComboInProgress = !isRepeatEnd && (
+        data.repeatEnd === false ||
+        data.repeat_end === 0 ||
+        data.gift?.repeat_end === 0 ||
+        giftType === 1 ||
+        repeatCount > 1
+      );
 
-        // Streak continuing: debounce with fallback timer
+      if (isComboInProgress) {
+        // Combo still in progress: update accumulated count in activeStreaks and DO NOT send webhook
         const existing = activeStreaks.get(streakKey);
         if (existing) {
           clearTimeout(existing.timer);
         }
 
+        // Fallback timer: if TikTok drops the repeatEnd event, send the accumulated streak after 3.5s
         const timer = setTimeout(() => {
           activeStreaks.delete(streakKey);
+          console.log(`[tiktok] Combo ended via timeout for ${streakKey}: ${payload.repeatCount}x ${payload.giftName} (${payload.coins} coins)`);
           sendWebhook(payload, "gift").catch((err) => {
             console.error("[tiktok] Fallback streak webhook dispatch error:", err);
           });
@@ -308,7 +337,18 @@ export async function connectLive(username?: string, webhookUri?: string) {
         return;
       }
 
-      // Non-streakable gift: dispatch immediately
+      // Combo ended (or single non-combo gift): send exactly once
+      const existing = activeStreaks.get(streakKey);
+      if (existing) {
+        clearTimeout(existing.timer);
+        activeStreaks.delete(streakKey);
+        if (existing.payload.repeatCount && existing.payload.repeatCount > (payload.repeatCount || 1)) {
+          payload.repeatCount = existing.payload.repeatCount;
+          payload.coins = payload.diamondCount! * payload.repeatCount;
+        }
+      }
+
+      console.log(`[tiktok] Sending gift webhook (combo ended): ${payload.repeatCount}x ${payload.giftName} (${payload.coins} coins) for ${payload.username}`);
       sendWebhook(payload, "gift").catch((err) => {
         console.error("[tiktok] Webhook dispatch error:", err);
       });

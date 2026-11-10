@@ -3,7 +3,7 @@ import type { LogEntry, WebhookPayload } from "../types.ts";
 
 export async function sendWebhook(
   payload: WebhookPayload,
-  type: "gift" | "test" | "system" | "spotify" = "gift"
+  type: "gift" | "test" | "system" | "spotify" | "tts" = "gift"
 ): Promise<LogEntry> {
   const uri = String(state.webhookUri || "").trim();
 

@@ -1,4 +1,27 @@
+export interface AppConfig {
+  username: string;
+  webhookUri: string;
+  sendTtsWebhook?: boolean;
+  spotifyClientId: string;
+  spotifyClientSecret: string;
+  spotifyRefreshToken: string;
+  tts?: {
+    enabled?: boolean;
+    voice?: string;
+    volume?: number;
+    rate?: number;
+    pitch?: number;
+    template?: string;
+    ignoreBotCommands?: boolean;
+    sendWebhook?: boolean;
+  };
+  ui?: {
+    minimizedBoxes?: Record<string, boolean>;
+  };
+}
+
 export interface TikTokGiftPayload {
+  event: "tiktok_gift";
   username: string;
   giftName: string;
   coins: number;
@@ -10,6 +33,16 @@ export interface TikTokGiftPayload {
   profilePictureUrl?: string;
   userId?: string;
   timestamp?: number;
+}
+
+export interface TikTokTtsPayload {
+  event: "tts";
+  username: string;
+  nickname: string;
+  comment: string;
+  text?: string;
+  voice?: string;
+  timestamp: number;
 }
 
 export interface SpotifyWebhookPayload {
@@ -28,12 +61,16 @@ export interface SpotifyWebhookPayload {
   timestamp: number;
 }
 
-export type WebhookPayload = TikTokGiftPayload | SpotifyWebhookPayload | Record<string, any>;
+export type WebhookPayload =
+  | TikTokGiftPayload
+  | TikTokTtsPayload
+  | SpotifyWebhookPayload
+  | Record<string, any>;
 
 export interface LogEntry {
   id: string;
   timestamp: string;
-  type: "gift" | "test" | "system" | "spotify";
+  type: "gift" | "test" | "system" | "spotify" | "tts";
   payload: WebhookPayload;
   webhookUri: string;
   httpStatus?: number;
@@ -113,6 +150,7 @@ export interface ServerState {
   spotify?: SpotifyInfo;
   recentChats?: TikTokChatMessage[];
   songRequests?: SongRequestItem[];
+  config?: AppConfig;
 }
 
 export interface TikTokChatMessage {
