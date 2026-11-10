@@ -19,6 +19,8 @@ export async function handleStatusRoutes(
       error: state.error,
       logs: state.logs,
       spotify: state.spotify,
+      recentChats: state.recentChats || [],
+      songRequests: state.songRequests || [],
     });
     return true;
   }
@@ -38,6 +40,8 @@ export async function handleStatusRoutes(
         error: state.error,
         logs: state.logs,
         spotify: state.spotify,
+        recentChats: state.recentChats || [],
+        songRequests: state.songRequests || [],
       })}\n\n`
     );
     sseClients.push(res);

@@ -1,0 +1,263 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Spotify Brutalist Overlay</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Archivo+Black&family=IBM+Plex+Sans+Thai:wght@400;500;600;700&family=Space+Mono:wght@400;700&family=Work+Sans:wght@500;700&display=swap" rel="stylesheet">
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; border-radius: 0 !important; }
+    body {
+      background: transparent;
+      font-family: "Work Sans", "IBM Plex Sans Thai", sans-serif;
+      overflow: hidden;
+      padding: 10px;
+    }
+    .card {
+      width: 460px;
+      height: 120px;
+      background: #1e2030;
+      border: 3px solid #cad3f5;
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      padding: 10px;
+      box-shadow: 4px 4px 0px #181926;
+      transition: opacity 0.3s ease;
+    }
+    .art-wrap {
+      width: 96px;
+      height: 96px;
+      border: 2px solid #cad3f5;
+      background: #181926;
+      flex-shrink: 0;
+      overflow: hidden;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+    .art-wrap img {
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+    }
+    .art-placeholder {
+      font-family: "Space Mono", "IBM Plex Sans Thai", monospace;
+      font-size: 11px;
+      color: #737994;
+      font-weight: bold;
+    }
+    .info {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+      min-width: 0;
+    }
+    .header-row {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 8px;
+    }
+    .badge {
+      font-family: "Space Mono", "IBM Plex Sans Thai", monospace;
+      font-size: 9px;
+      font-weight: 700;
+      padding: 2px 6px;
+      border: 1px solid #7dc4e4;
+      color: #7dc4e4;
+      background: #24273a;
+      letter-spacing: 0.5px;
+    }
+    .badge.paused {
+      border-color: #eed49f;
+      color: #eed49f;
+    }
+    .playlist-name {
+      font-family: "Space Mono", "IBM Plex Sans Thai", monospace;
+      font-size: 9px;
+      color: #b7bdf8;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    .title {
+      font-family: "Archivo Black", "IBM Plex Sans Thai", sans-serif;
+      font-size: 16px;
+      color: #7dc4e4;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      line-height: 1.2;
+    }
+    .artist {
+      font-size: 12px;
+      font-weight: 600;
+      color: #cad3f5;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    .progress-wrap {
+      margin-top: 4px;
+      display: flex;
+      flex-direction: column;
+      gap: 2px;
+    }
+    .progress-bar {
+      width: 100%;
+      height: 6px;
+      background: #363a4f;
+      border: 1px solid #cad3f5;
+    }
+    .progress-fill {
+      height: 100%;
+      background: #7dc4e4;
+      width: 0%;
+      transition: width 0.3s linear;
+    }
+    .time-row {
+      display: flex;
+      justify-content: space-between;
+      font-family: "Space Mono", "IBM Plex Sans Thai", monospace;
+      font-size: 9px;
+      color: #a5adce;
+    }
+    .empty-state {
+      font-family: "Space Mono", "IBM Plex Sans Thai", monospace;
+      font-size: 12px;
+      color: #a5adce;
+      text-align: center;
+      width: 100%;
+    }
+  </style>
+</head>
+<body>
+  <div class="card" id="card">
+    <div class="empty-state" id="empty-state">[ WAITING FOR SPOTIFY... ]</div>
+    <div class="art-wrap" id="art-wrap" style="display: none;">
+      <img id="album-art" src="" alt="Album Art" />
+    </div>
+    <div class="info" id="info-wrap" style="display: none;">
+      <div class="header-row">
+        <span class="playlist-name" id="playlist-tag"></span>
+        <span class="badge" id="status-badge">PLAYING</span>
+      </div>
+      <div class="title" id="track-title">--</div>
+      <div class="artist" id="track-artist">--</div>
+      <div class="progress-wrap">
+        <div class="progress-bar">
+          <div class="progress-fill" id="progress-fill"></div>
+        </div>
+        <div class="time-row">
+          <span id="time-cur">0:00</span>
+          <span id="time-dur">0:00</span>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    let currentTrack = null;
+    let localProgress = 0;
+    let duration = 0;
+    let isPlaying = false;
+    let progressTimer = null;
+
+    function formatTime(ms) {
+      if (!ms || isNaN(ms)) return "0:00";
+      const totalSec = Math.floor(Math.max(0, ms) / 1000);
+      const m = Math.floor(totalSec / 60);
+      const s = totalSec % 60;
+      return m + ":" + (s < 10 ? "0" : "") + s;
+    }
+
+    function updateUI() {
+      const emptyState = document.getElementById("empty-state");
+      const artWrap = document.getElementById("art-wrap");
+      const infoWrap = document.getElementById("info-wrap");
+
+      if (!currentTrack) {
+        emptyState.style.display = "block";
+        emptyState.textContent = "[ SPOTIFY IDLE / STOPPED ]";
+        artWrap.style.display = "none";
+        infoWrap.style.display = "none";
+        return;
+      }
+
+      emptyState.style.display = "none";
+      artWrap.style.display = "flex";
+      infoWrap.style.display = "flex";
+
+      document.getElementById("track-title").textContent = currentTrack.name || "Unknown Track";
+      document.getElementById("track-artist").textContent = currentTrack.artist || "Unknown Artist";
+      
+      const badge = document.getElementById("status-badge");
+      if (isPlaying) {
+        badge.textContent = "PLAYING";
+        badge.className = "badge";
+      } else {
+        badge.textContent = "PAUSED";
+        badge.className = "badge paused";
+      }
+
+      const playlistTag = document.getElementById("playlist-tag");
+      if (currentTrack.playlistName) {
+        playlistTag.textContent = "▶ " + currentTrack.playlistName;
+        playlistTag.style.display = "inline";
+      } else {
+        playlistTag.style.display = "none";
+      }
+
+      const img = document.getElementById("album-art");
+      if (currentTrack.albumArt) {
+        img.src = currentTrack.albumArt;
+        img.style.display = "block";
+      } else {
+        img.style.display = "none";
+      }
+
+      const pct = duration > 0 ? Math.min(100, (localProgress / duration) * 100) : 0;
+      document.getElementById("progress-fill").style.width = pct + "%";
+      document.getElementById("time-cur").textContent = formatTime(localProgress);
+      document.getElementById("time-dur").textContent = formatTime(duration);
+    }
+
+    function connectSSE() {
+      const es = new EventSource("/api/status/stream");
+      es.onmessage = (event) => {
+        try {
+          const data = JSON.parse(event.data);
+          const t = data.spotify?.currentTrack;
+          if (t) {
+            currentTrack = t;
+            isPlaying = Boolean(t.isPlaying);
+            localProgress = Number(t.progressMs) || 0;
+            duration = Number(t.durationMs) || 0;
+          } else {
+            currentTrack = null;
+            isPlaying = false;
+          }
+          updateUI();
+        } catch (e) {}
+      };
+      es.onerror = () => {
+        document.getElementById("empty-state").textContent = "[ RECONNECTING BRIDGE... ]";
+      };
+    }
+
+    setInterval(() => {
+      if (isPlaying && duration > 0 && localProgress < duration) {
+        localProgress += 500;
+        const pct = Math.min(100, (localProgress / duration) * 100);
+        document.getElementById("progress-fill").style.width = pct + "%";
+        document.getElementById("time-cur").textContent = formatTime(localProgress);
+      }
+    }, 500);
+
+    connectSSE();
+  </script>
+</body>
+</html>

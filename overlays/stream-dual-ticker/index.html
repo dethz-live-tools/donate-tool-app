@@ -1,0 +1,90 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Stream Dual Ticker</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Archivo+Black&family=IBM+Plex+Sans+Thai:wght@400;700&family=Space+Mono:wght@400;700&display=swap" rel="stylesheet">
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; border-radius: 0 !important; }
+    body {
+      background: transparent;
+      font-family: "Space Mono", "IBM Plex Sans Thai", monospace;
+      overflow: hidden;
+    }
+    .ticker {
+      width: 100vw;
+      height: 44px;
+      background: #181926;
+      border-top: 2px solid #cad3f5;
+      border-bottom: 2px solid #cad3f5;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 0 16px;
+      color: #cad3f5;
+    }
+    .ticker-side {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      font-size: 12px;
+    }
+    .tag {
+      font-family: "Archivo Black", "IBM Plex Sans Thai", sans-serif;
+      font-size: 11px;
+      padding: 2px 6px;
+      background: #7dc4e4;
+      color: #181926;
+    }
+    .tag.tiktok {
+      background: #ee99a0;
+      color: #181926;
+    }
+    .val {
+      color: #cad3f5;
+      font-weight: bold;
+    }
+  </style>
+</head>
+<body>
+  <div class="ticker">
+    <div class="ticker-side">
+      <span class="tag">♪ NOW PLAYING</span>
+      <span class="val" id="spotify-info">Waiting for Spotify...</span>
+    </div>
+    <div class="ticker-side">
+      <span class="tag tiktok">★ LATEST DONATION</span>
+      <span class="val" id="tiktok-info">No gifts yet this stream</span>
+    </div>
+  </div>
+
+  <script>
+    const spotEl = document.getElementById("spotify-info");
+    const tiktokEl = document.getElementById("tiktok-info");
+
+    function connectSSE() {
+      const es = new EventSource("/api/status/stream");
+      es.onmessage = (event) => {
+        try {
+          const data = JSON.parse(event.data);
+          const t = data.spotify?.currentTrack;
+          if (t && t.name) {
+            spotEl.textContent = t.name + " - " + t.artist;
+          } else {
+            spotEl.textContent = "Spotify Idle";
+          }
+
+          const logs = data.logs || [];
+          const gift = logs.find(l => l.type === "gift" || l.type === "test");
+          if (gift && gift.payload) {
+            tiktokEl.textContent = gift.payload.username + " sent " + gift.payload.giftName + " (" + gift.payload.coins + " coins)";
+          }
+        } catch (e) {}
+      };
+    }
+    connectSSE();
+  </script>
+</body>
+</html>

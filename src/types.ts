@@ -2,6 +2,14 @@ export interface TikTokGiftPayload {
   username: string;
   giftName: string;
   coins: number;
+  nickname?: string;
+  diamondCount?: number;
+  repeatCount?: number;
+  giftId?: number | string;
+  giftPictureUrl?: string;
+  profilePictureUrl?: string;
+  userId?: string;
+  timestamp?: number;
 }
 
 export interface SpotifyWebhookPayload {
@@ -44,6 +52,8 @@ export interface SpotifyTrack {
   isPlaying: boolean;
   playlistName?: string | null;
   playlistUri?: string | null;
+  uri?: string | null;
+  id?: string | null;
 }
 
 export interface SpotifyPlaylist {
@@ -101,4 +111,57 @@ export interface ServerState {
   error: string | null;
   logs: LogEntry[];
   spotify?: SpotifyInfo;
+  recentChats?: TikTokChatMessage[];
+  songRequests?: SongRequestItem[];
+}
+
+export interface TikTokChatMessage {
+  id: string;
+  userId: string;
+  uniqueId: string;
+  nickname: string;
+  comment: string;
+  profilePictureUrl: string | null;
+  timestamp: number;
+}
+
+export interface SpotifySearchResult {
+  id: string;
+  name: string;
+  artist: string;
+  album: string;
+  albumArt: string | null;
+  durationMs: number;
+  uri: string;
+}
+
+export interface SongRequestItem {
+  id: string;
+  requester: string;
+  trackName: string;
+  artist: string;
+  albumArt: string | null;
+  uri: string;
+  timestamp: number;
+  source: "web" | "tiktok_chat";
+  status: "queued" | "failed";
+  error?: string;
+}
+
+export interface OverlayMeta {
+  id: string;
+  name: string;
+  description: string;
+  version: string;
+  author: string;
+  category: "spotify" | "tiktok" | "combined" | "custom";
+  width: number;
+  height: number;
+  previewUrl?: string;
+  isCustom?: boolean;
+}
+
+export interface OverlayMarketItem extends OverlayMeta {
+  isInstalled: boolean;
+  tags: string[];
 }

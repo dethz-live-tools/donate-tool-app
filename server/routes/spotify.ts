@@ -1,12 +1,15 @@
 import type http from "node:http";
 import { saveConfig } from "../config.ts";
 import {
+  addTrackToQueue,
   controlPlayer,
   fetchCurrentlyPlaying,
   getAvailableDevices,
   getCurrentSongList,
   getUserPlaylists,
+  requestSong,
   resetSpotifyWebhookTracker,
+  searchSpotifyTracks,
   sendSpotifyStatusWebhook,
   startSpotifyPolling,
   stopSpotifyPolling,
@@ -14,6 +17,8 @@ import {
 } from "../services/spotify.ts";
 import { broadcastState, getSpotifyPublicState, spotifyState, state } from "../state.ts";
 import { parseJsonBody, PORT, sendJson } from "../utils.ts";
+
+let expectedOAuthState: string | null = null;
 
 export async function handleSpotifyRoutes(
   req: http.IncomingMessage,
@@ -45,11 +50,14 @@ export async function handleSpotifyRoutes(
       "user-library-read",
     ].join(" ");
 
+    expectedOAuthState = Math.random().toString(36).slice(2) + Math.random().toString(36).slice(2);
+
     const params = new URLSearchParams({
       client_id: spotifyState.clientId,
       response_type: "code",
       redirect_uri: redirectUri,
       scope: scopes,
+      state: expectedOAuthState,
       show_dialog: "true",
     });
 
@@ -64,6 +72,15 @@ export async function handleSpotifyRoutes(
   if (url.pathname === "/api/spotify/callback" && req.method === "GET") {
     const code = url.searchParams.get("code");
     const error = url.searchParams.get("error");
+    const returnedState = url.searchParams.get("state");
+
+    if (expectedOAuthState && returnedState !== expectedOAuthState) {
+      expectedOAuthState = null;
+      res.writeHead(403, { "Content-Type": "text/html" });
+      res.end(`<h3>Spotify Authentication Failed: Invalid OAuth state parameter (CSRF protection)</h3>`);
+      return true;
+    }
+    expectedOAuthState = null;
 
     if (error || !code) {
       res.writeHead(400, { "Content-Type": "text/html" });
@@ -282,6 +299,60 @@ export async function handleSpotifyRoutes(
     } catch (err: any) {
       sendJson(res, 200, { success: false, error: err.message, playlists: [] });
     }
+    return true;
+  }
+
+  // Search Spotify tracks
+  if (url.pathname === "/api/spotify/search" && req.method === "GET") {
+    const q = url.searchParams.get("q") || "";
+    const limit = Number(url.searchParams.get("limit")) || 10;
+    try {
+      const tracks = await searchSpotifyTracks(q, limit);
+      sendJson(res, 200, { success: true, count: tracks.length, tracks });
+    } catch (err: any) {
+      sendJson(res, 200, { success: false, error: err.message, tracks: [] });
+    }
+    return true;
+  }
+
+  // Request a song (add to Spotify queue)
+  if (
+    (url.pathname === "/api/spotify/request" || url.pathname === "/api/spotify/queue/add") &&
+    req.method === "POST"
+  ) {
+    try {
+      const parsed = await parseJsonBody(req);
+      const query = String(parsed?.query || parsed?.uri || "").trim();
+      const requester = String(parsed?.requester || "Streamer").trim();
+      const deviceId = parsed?.deviceId ? String(parsed.deviceId).trim() : undefined;
+
+      if (!query) {
+        sendJson(res, 400, { success: false, error: "Song query or URI required" });
+        return true;
+      }
+
+      const item = await requestSong(query, requester, "web", deviceId);
+      sendJson(res, item.status === "queued" ? 200 : 400, {
+        success: item.status === "queued",
+        item,
+      });
+    } catch (err: any) {
+      sendJson(res, 500, { success: false, error: err.message });
+    }
+    return true;
+  }
+
+  // Clear song request history
+  if (url.pathname === "/api/spotify/clear-requests" && req.method === "POST") {
+    state.songRequests = [];
+    broadcastState();
+    sendJson(res, 200, { success: true, message: "Song requests cleared" });
+    return true;
+  }
+
+  // Get song requests
+  if (url.pathname === "/api/spotify/requests" && req.method === "GET") {
+    sendJson(res, 200, { success: true, requests: state.songRequests || [] });
     return true;
   }
 

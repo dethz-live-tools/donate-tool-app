@@ -12,13 +12,33 @@ Built with **Tauri v2**, **React 19**, **TypeScript**, **Vite**, and **Bun**, st
   - Connects to active live streams using `tiktok-live-connector`.
   - Dispatches structured HTTP POST webhooks immediately when gifts or donations are received.
   - Automatically reconnects and displays real-time room status (`connected`, `connecting`, `disconnected`, `error`).
+  - Robust combo streak gift debouncing with fallback timeout protection so no gifts are lost.
 
-- 🎵 **Spotify Desktop Integration**
+- 🗣️ **TikTok Chat Reader & Text-to-Speech (TTS)**
+  - Real-time live chat listener with native speech synthesis audio output.
+  - Configurable TTS voice, speech speed rate, pitch, volume, and message read templates.
+  - Automatic bot command filter (skips `!` commands like `!sr`).
+  - Interactive speech controls with instant replay button on every incoming chat message.
+
+- 🎵 **Spotify Desktop Integration & Song Requests**
   - **Now Playing Display**: Live cover art, song title, artist, album, playlist context, and duration progress bar.
   - **Player Controls**: Remote playback commands (`play`, `pause`, `next`, `previous`).
   - **Live Queue & Track List**: Browse and jump to songs currently queued in your active Spotify session.
   - **Device / Player Selector**: Switch active playback across your desktop, web player, mobile phone, or smart speakers directly from the interface.
-  - **Spotify Webhook Forwarder**: Automatically dispatches playback transitions (track changes, play/pause state) and device info to your configured webhook without spamming unchanged progress.
+  - **Spotify Song Request**: In-app track search & direct URL/URI queuing with full request history.
+  - **TikTok Live Chat Song Requests**: Viewers can request songs live by typing `!sr <song title>` or `!request <spotify link>`.
+  - **Proactive Token Auto-Refresh**: Background timer refreshes Spotify tokens before expiration for 24/7 stream stability.
+  - **Song-Change Webhooks**: Webhooks trigger strictly when songs change without spamming playback pause/resume state.
+
+- 🗂️ **Modular Minimized Dashboard Boxes**
+  - Collapsible RawBlock cards with persistent minimize/expand states.
+  - Quick action toolbar (`EXPAND ALL` / `MINIMIZE ALL`) to streamline streamer workspace.
+
+- 📺 **Stream Overlays & In-App Market**
+  - **Local Static Serving**: Hosts transparent HTML5/CSS3 widgets directly from `overlays/` at `http://127.0.0.1:3001/overlays/<id>/` for OBS Studio and Streamlabs.
+  - **In-App Marketplace**: Browse, install, preview, and copy OBS Browser Source URLs with 1-click.
+  - **Built-in Presets**: RawBlock Spotify Player, TikTok Live Gift Alert Box, Minimal Floating Song Pill, and Stream Dual Ticker.
+  - **Custom Overlay Scaffolding**: Create and customize custom web widgets directly from the UI.
 
 - ⚡ **Multi-OS Desktop Native App**
   - Packaged with **Tauri v2** for ultra-low memory footprint and instant startup.
@@ -147,6 +167,7 @@ Dispatched on song change, play/pause, or manual test:
 Detailed guides are located in the [`docs/`](file:///docs/) directory:
 
 - 🏛️ [**Architecture & System Design**](file:///docs/architecture.md): Overview of Tauri desktop runtime, Node/Bun server, SSE state synchronization, and services.
+- 📺 [**Overlays & Marketplace Guide**](file:///docs/overlays.md): Browser Source configuration in OBS, built-in presets, and building custom widgets.
 - 📡 [**Webhook Specifications**](file:///docs/webhooks.md): Full schema definitions, dispatch behavior, edge cases, and logging details.
 - 🎵 [**Spotify Setup Guide**](file:///docs/spotify-setup.md): Step-by-step instructions for creating a Spotify Developer App, granting scopes, and linking your account.
 - 🔨 [**Build & Release Guide**](file:///docs/build-and-release.md): Compiling binaries locally and understanding the automated multi-OS GitHub Actions workflow.

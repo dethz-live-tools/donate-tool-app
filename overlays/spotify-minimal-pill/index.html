@@ -1,0 +1,124 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Minimal Song Pill</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Archivo+Black&family=IBM+Plex+Sans+Thai:wght@400;600&family=Space+Mono:wght@400;700&display=swap" rel="stylesheet">
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      background: transparent;
+      font-family: "Space Mono", "IBM Plex Sans Thai", monospace;
+      overflow: hidden;
+      padding: 6px;
+    }
+    .pill {
+      display: inline-flex;
+      align-items: center;
+      gap: 10px;
+      background: #181926;
+      border: 2px solid #7dc4e4;
+      padding: 6px 12px 6px 6px;
+      max-width: 340px;
+      box-shadow: 3px 3px 0px rgba(0,0,0,0.4);
+    }
+    .cover {
+      width: 36px;
+      height: 36px;
+      border: 1px solid #7dc4e4;
+      flex-shrink: 0;
+      background: #24273a;
+      object-fit: cover;
+    }
+    .text-wrap {
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+      white-space: nowrap;
+    }
+    .song {
+      font-family: "Archivo Black", "IBM Plex Sans Thai", sans-serif;
+      font-size: 12px;
+      color: #7dc4e4;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    .artist {
+      font-size: 10px;
+      color: #cad3f5;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    .eq {
+      display: flex;
+      align-items: flex-end;
+      gap: 2px;
+      height: 14px;
+      margin-left: 6px;
+    }
+    .bar {
+      width: 3px;
+      background: #7dc4e4;
+      height: 4px;
+      transition: height 0.15s ease;
+    }
+    .playing .bar:nth-child(1) { animation: jump 0.8s infinite alternate ease-in-out; }
+    .playing .bar:nth-child(2) { animation: jump 0.6s 0.2s infinite alternate ease-in-out; }
+    .playing .bar:nth-child(3) { animation: jump 0.9s 0.4s infinite alternate ease-in-out; }
+    @keyframes jump { 0% { height: 3px; } 100% { height: 14px; } }
+  </style>
+</head>
+<body>
+  <div class="pill" id="pill" style="display: none;">
+    <img class="cover" id="cover" src="" alt="Cover" />
+    <div class="text-wrap">
+      <div class="song" id="song">--</div>
+      <div class="artist" id="artist">--</div>
+    </div>
+    <div class="eq" id="eq">
+      <div class="bar"></div>
+      <div class="bar"></div>
+      <div class="bar"></div>
+    </div>
+  </div>
+
+  <script>
+    const pill = document.getElementById("pill");
+    const cover = document.getElementById("cover");
+    const song = document.getElementById("song");
+    const artist = document.getElementById("artist");
+    const eq = document.getElementById("eq");
+
+    function connectSSE() {
+      const es = new EventSource("/api/status/stream");
+      es.onmessage = (event) => {
+        try {
+          const data = JSON.parse(event.data);
+          const t = data.spotify?.currentTrack;
+          if (t && t.name) {
+            pill.style.display = "inline-flex";
+            song.textContent = t.name;
+            artist.textContent = t.artist;
+            if (t.albumArt) {
+              cover.src = t.albumArt;
+              cover.style.display = "block";
+            } else {
+              cover.style.display = "none";
+            }
+            if (t.isPlaying) {
+              eq.classList.add("playing");
+            } else {
+              eq.classList.remove("playing");
+            }
+          } else {
+            pill.style.display = "none";
+          }
+        } catch (e) {}
+      };
+    }
+    connectSSE();
+  </script>
+</body>
+</html>

@@ -23,6 +23,28 @@ export async function sendWebhook(
     return entry;
   }
 
+  // Enforce http/https protocol security
+  try {
+    const parsedUrl = new URL(uri);
+    if (parsedUrl.protocol !== "http:" && parsedUrl.protocol !== "https:") {
+      throw new Error("Only http: and https: webhook protocols allowed");
+    }
+  } catch (urlErr: any) {
+    const entry: LogEntry = {
+      id: Math.random().toString(36).slice(2, 9),
+      timestamp: new Date().toLocaleTimeString(),
+      type,
+      payload,
+      webhookUri: uri,
+      success: false,
+      error: `Invalid Webhook URL: ${urlErr.message}`,
+    };
+    state.logs.unshift(entry);
+    if (state.logs.length > 50) state.logs.pop();
+    broadcastState();
+    return entry;
+  }
+
   let entry: LogEntry;
   try {
     const controller = new AbortController();

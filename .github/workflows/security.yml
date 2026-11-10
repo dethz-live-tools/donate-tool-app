@@ -1,0 +1,69 @@
+name: Security Analysis & AI Pentesting
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  schedule:
+    - cron: '0 3 * * 1' # Weekly on Monday 03:00 UTC
+
+permissions:
+  contents: read
+  security-events: write
+
+jobs:
+  codeql-scan:
+    name: CodeQL Static Security Analysis
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Initialize CodeQL
+        uses: github/codeql-action/init@v3
+        with:
+          languages: javascript-typescript
+
+      - name: Perform CodeQL Analysis
+        uses: github/codeql-action/analyze@v3
+        with:
+          category: "/language:javascript-typescript"
+
+  dependency-audit:
+    name: Dependency Vulnerability Audit
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+
+      - name: Audit Node/Bun dependencies
+        run: bun pm audit || echo "Review flagged advisory items"
+
+  shannon-audit:
+    name: Shannon AI Autonomous Security Scan
+    runs-on: ubuntu-latest
+    if: github.repository_owner != '' && github.event_name != 'pull_request'
+    continue-on-error: true
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Run Shannon AI Pentest Scanner
+        if: env.HAS_KEY == 'true'
+        uses: KeygraphHQ/shannon-action@v1
+        env:
+          HAS_KEY: ${{ secrets.SHANNON_AI_API_KEY != '' }}
+        with:
+          url: http://host.docker.internal:3001
+          api-key: ${{ secrets.SHANNON_AI_API_KEY }}
+          fail-on-severity: high
+          upload-sarif: true

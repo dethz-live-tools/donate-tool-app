@@ -1,0 +1,10 @@
+{
+  "id": "spotify-minimal-pill",
+  "name": "Minimal Floating Song Pill",
+  "description": "Ultra-compact streaming pill widget with rotating artwork thumbnail and animated visualizer equalizer bars.",
+  "version": "1.0.0",
+  "author": "dethz",
+  "category": "spotify",
+  "width": 360,
+  "height": 60
+}

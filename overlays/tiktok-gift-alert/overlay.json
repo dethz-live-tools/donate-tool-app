@@ -1,0 +1,10 @@
+{
+  "id": "tiktok-gift-alert",
+  "name": "TikTok Live Gift Alert Box",
+  "description": "Animated brutalist alert banner with gift animations and coin totals for live stream donations.",
+  "version": "1.0.0",
+  "author": "dethz",
+  "category": "tiktok",
+  "width": 440,
+  "height": 160
+}

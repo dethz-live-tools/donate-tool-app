@@ -1,0 +1,10 @@
+{
+  "id": "stream-dual-ticker",
+  "name": "Stream Dual Ticker Bar",
+  "description": "Full-width stream ticker displaying active Spotify song on the left and recent TikTok live donations on the right.",
+  "version": "1.0.0",
+  "author": "dethz",
+  "category": "combined",
+  "width": 1920,
+  "height": 44
+}

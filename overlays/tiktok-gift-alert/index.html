@@ -1,0 +1,162 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>TikTok Live Gift Alert</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Archivo+Black&family=IBM+Plex+Sans+Thai:wght@400;700&family=Space+Mono:wght@400;700&display=swap" rel="stylesheet">
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; border-radius: 0 !important; }
+    body {
+      background: transparent;
+      font-family: "Space Mono", "IBM Plex Sans Thai", monospace;
+      overflow: hidden;
+      padding: 12px;
+    }
+    .alert-box {
+      width: 410px;
+      background: #1e2030;
+      border: 4px solid #7dc4e4;
+      box-shadow: 6px 6px 0px #181926;
+      padding: 16px;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      opacity: 0;
+      transform: translateY(-20px);
+      transition: all 0.4s cubic-bezier(0.18, 0.89, 0.32, 1.28);
+    }
+    .alert-box.show {
+      opacity: 1;
+      transform: translateY(0);
+    }
+    .alert-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      border-bottom: 2px solid #7dc4e4;
+      padding-bottom: 6px;
+    }
+    .alert-label {
+      font-family: "Archivo Black", "IBM Plex Sans Thai", sans-serif;
+      font-size: 13px;
+      color: #7dc4e4;
+      letter-spacing: 1.5px;
+    }
+    .alert-coins {
+      background: #eed49f;
+      color: #181926;
+      font-weight: bold;
+      font-size: 11px;
+      padding: 2px 8px;
+    }
+    .alert-content {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      margin-top: 4px;
+    }
+    .gift-icon {
+      font-size: 32px;
+      line-height: 1;
+    }
+    .user-info {
+      display: flex;
+      flex-direction: column;
+      gap: 2px;
+    }
+    .username {
+      font-family: "Archivo Black", "IBM Plex Sans Thai", sans-serif;
+      font-size: 16px;
+      color: #cad3f5;
+    }
+    .gift-msg {
+      font-size: 13px;
+      color: #a5adce;
+    }
+    .gift-name {
+      color: #f5a97f;
+      font-weight: bold;
+    }
+  </style>
+</head>
+<body>
+  <div class="alert-box" id="alert">
+    <div class="alert-header">
+      <span class="alert-label">★ TIKTOK LIVE GIFT</span>
+      <span class="alert-coins" id="coins-tag">+20 COINS</span>
+    </div>
+    <div class="alert-content">
+      <div class="gift-icon">🎁</div>
+      <div class="user-info">
+        <div class="username" id="username">username</div>
+        <div class="gift-msg">Sent <span class="gift-name" id="gift-name">Rose</span>!</div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    const alertBox = document.getElementById("alert");
+    const userEl = document.getElementById("username");
+    const giftEl = document.getElementById("gift-name");
+    const coinsEl = document.getElementById("coins-tag");
+
+    const queue = [];
+    let isShowing = false;
+    let lastSeenId = null;
+
+    function showAlert(item) {
+      isShowing = true;
+      userEl.textContent = item.username || "Anonymous";
+      giftEl.textContent = item.giftName || "Gift";
+      coinsEl.textContent = "+" + (item.coins || 1) + " COINS";
+
+      alertBox.classList.add("show");
+
+      setTimeout(() => {
+        alertBox.classList.remove("show");
+        setTimeout(() => {
+          isShowing = false;
+          if (queue.length > 0) {
+            showAlert(queue.shift());
+          }
+        }, 500);
+      }, 4500);
+    }
+
+    function queueAlert(payload) {
+      if (isShowing) {
+        queue.push(payload);
+      } else {
+        showAlert(payload);
+      }
+    }
+
+    function connectSSE() {
+      const es = new EventSource("/api/status/stream");
+      es.onmessage = (event) => {
+        try {
+          const data = JSON.parse(event.data);
+          const logs = data.logs || [];
+          if (logs.length > 0) {
+            const latest = logs[0];
+            if (latest.type === "gift" || latest.type === "test") {
+              if (latest.id !== lastSeenId) {
+                lastSeenId = latest.id;
+                queueAlert({
+                  username: latest.payload?.username,
+                  giftName: latest.payload?.giftName,
+                  coins: latest.payload?.coins
+                });
+              }
+            }
+          }
+        } catch (e) {}
+      };
+    }
+
+    connectSSE();
+  </script>
+</body>
+</html>

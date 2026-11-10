@@ -1,6 +1,7 @@
 import http from "node:http";
 import process from "node:process";
 import { handleRoutes } from "./routes/index.ts";
+import { ensureOverlaysDir } from "./services/overlays.ts";
 import { startSpotifyPolling } from "./services/spotify.ts";
 import { spotifyState } from "./state.ts";
 import { PORT, sendJson } from "./utils.ts";
@@ -13,6 +14,9 @@ process.on("unhandledRejection", (reason) => {
   console.error("[server] Unhandled rejection:", reason);
 });
 
+// Ensure default overlays are initialized
+ensureOverlaysDir();
+
 // Auto-start Spotify polling if refresh token and credentials already exist
 if (spotifyState.refreshToken && spotifyState.clientId && spotifyState.clientSecret) {
   startSpotifyPolling();
@@ -22,7 +26,7 @@ export const server = http.createServer(async (req, res) => {
   try {
     // CORS headers
     res.setHeader("Access-Control-Allow-Origin", "*");
-    res.setHeader("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
+    res.setHeader("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, HEAD, OPTIONS");
     res.setHeader("Access-Control-Allow-Headers", "Content-Type, Authorization, *");
 
     if (req.method === "OPTIONS") {

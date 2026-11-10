@@ -5,22 +5,62 @@ import type {
   CurrentSongItem,
   CurrentSongListResponse,
   LogEntry,
+  SongRequestItem,
   SpotifyDevice,
   SpotifyPlaylist,
+  SpotifySearchResult,
   SpotifyTrack,
   SpotifyWebhookPayload,
 } from "../types.ts";
 
 const playlistCache = new Map<string, string>();
 let spotifyPollTimer: NodeJS.Timeout | null = null;
+let autoRefreshTimer: NodeJS.Timeout | null = null;
+let refreshingPromise: Promise<boolean> | null = null;
 
 let lastDispatchedTrackKey: string | null = null;
-let lastDispatchedIsPlaying: boolean | null = null;
 let hasDispatchedInitial: boolean = false;
+
+export function stopAutoTokenRefresh() {
+  if (autoRefreshTimer) {
+    clearTimeout(autoRefreshTimer);
+    autoRefreshTimer = null;
+  }
+}
+
+export function scheduleAutoTokenRefresh(expiresInMs?: number) {
+  stopAutoTokenRefresh();
+
+  const cid = String(spotifyState.clientId || "").trim();
+  const csecret = String(spotifyState.clientSecret || "").trim();
+  const rtoken = String(spotifyState.refreshToken || "").trim();
+
+  if (!rtoken || !cid || !csecret) {
+    return;
+  }
+
+  // Target: refresh 5 minutes (300,000 ms) before token expiration
+  const refreshBufferMs = 5 * 60 * 1000;
+  const msRemaining = expiresInMs !== undefined
+    ? expiresInMs
+    : (spotifyState.tokenExpiresAt - Date.now());
+
+  const delayMs = Math.max(5000, msRemaining - refreshBufferMs);
+
+  console.log(`[spotify] Auto token refresh scheduled in ${Math.round(delayMs / 1000)}s`);
+
+  autoRefreshTimer = setTimeout(async () => {
+    console.log("[spotify] Proactively auto-refreshing Spotify access token...");
+    const ok = await refreshSpotifyToken();
+    if (!ok) {
+      console.warn("[spotify] Auto token refresh failed, retrying in 30s...");
+      scheduleAutoTokenRefresh(30 * 1000 + refreshBufferMs);
+    }
+  }, delayMs);
+}
 
 export function resetSpotifyWebhookTracker() {
   lastDispatchedTrackKey = null;
-  lastDispatchedIsPlaying = null;
   hasDispatchedInitial = false;
 }
 
@@ -59,84 +99,94 @@ export async function checkAndDispatchSpotifyWebhook() {
   if (!spotifyState.connected && !spotifyState.refreshToken) return;
 
   const track = spotifyState.currentTrack;
-  const currentTrackKey = track
-    ? `${track.name}:::${track.artist}:::${track.album}:::${track.playlistUri || ""}`
-    : null;
-  const currentIsPlaying = track ? Boolean(track.isPlaying) : false;
+  if (!track || !track.name) return;
+
+  // Track key uniquely identifies the song
+  const currentTrackKey =
+    (track.uri && track.uri.trim()) ||
+    `${(track.name || "").trim().toLowerCase()}:::${(track.artist || "").trim().toLowerCase()}`;
 
   if (!hasDispatchedInitial) {
     hasDispatchedInitial = true;
     lastDispatchedTrackKey = currentTrackKey;
-    lastDispatchedIsPlaying = currentIsPlaying;
-    if (track) {
-      await sendSpotifyStatusWebhook();
-    }
+    await sendSpotifyStatusWebhook();
     return;
   }
 
-  const trackChanged = currentTrackKey !== lastDispatchedTrackKey;
-  const playStateChanged = currentIsPlaying !== lastDispatchedIsPlaying;
-
-  if (trackChanged || playStateChanged) {
+  // Strictly dispatch webhook ONLY when the song actually changes
+  if (currentTrackKey !== lastDispatchedTrackKey) {
     lastDispatchedTrackKey = currentTrackKey;
-    lastDispatchedIsPlaying = currentIsPlaying;
     await sendSpotifyStatusWebhook();
   }
 }
 
 // Spotify token refresh logic
 export async function refreshSpotifyToken(): Promise<boolean> {
-  const cid = String(spotifyState.clientId || "").trim();
-  const csecret = String(spotifyState.clientSecret || "").trim();
-  const rtoken = String(spotifyState.refreshToken || "").trim();
-
-  if (!rtoken || !cid || !csecret) {
-    spotifyState.connected = false;
-    spotifyState.currentTrack = null;
-    spotifyState.error = "Missing Spotify Client ID, Client Secret, or Refresh Token";
-    broadcastState();
-    return false;
+  if (refreshingPromise) {
+    return refreshingPromise;
   }
 
-  try {
-    const creds = Buffer.from(`${cid}:${csecret}`).toString("base64");
+  refreshingPromise = (async () => {
+    const cid = String(spotifyState.clientId || "").trim();
+    const csecret = String(spotifyState.clientSecret || "").trim();
+    const rtoken = String(spotifyState.refreshToken || "").trim();
 
-    const res = await fetch("https://accounts.spotify.com/api/token", {
-      method: "POST",
-      headers: {
-        Authorization: `Basic ${creds}`,
-        "Content-Type": "application/x-www-form-urlencoded",
-      },
-      body: new URLSearchParams({
-        grant_type: "refresh_token",
-        refresh_token: rtoken,
-      }),
-    });
-
-    if (!res.ok) {
-      const errText = await res.text();
-      spotifyState.error = `Token refresh failed (${res.status}): ${errText.slice(0, 150)}`;
+    if (!rtoken || !cid || !csecret) {
       spotifyState.connected = false;
+      spotifyState.currentTrack = null;
+      spotifyState.error = "Missing Spotify Client ID, Client Secret, or Refresh Token";
       broadcastState();
       return false;
     }
 
-    const data = await res.json();
-    spotifyState.accessToken = data.access_token;
-    spotifyState.tokenExpiresAt = Date.now() + (Number(data.expires_in) || 3600) * 1000;
-    if (data.refresh_token) {
-      spotifyState.refreshToken = data.refresh_token.trim();
-      saveConfig({ spotifyRefreshToken: spotifyState.refreshToken });
+    try {
+      const creds = Buffer.from(`${cid}:${csecret}`).toString("base64");
+
+      const res = await fetch("https://accounts.spotify.com/api/token", {
+        method: "POST",
+        headers: {
+          Authorization: `Basic ${creds}`,
+          "Content-Type": "application/x-www-form-urlencoded",
+        },
+        body: new URLSearchParams({
+          grant_type: "refresh_token",
+          refresh_token: rtoken,
+        }),
+      });
+
+      if (!res.ok) {
+        const errText = await res.text();
+        spotifyState.error = `Token refresh failed (${res.status}): ${errText.slice(0, 150)}`;
+        spotifyState.connected = false;
+        broadcastState();
+        return false;
+      }
+
+      const data = await res.json();
+      const expiresInSec = Number(data.expires_in) || 3600;
+      spotifyState.accessToken = data.access_token;
+      spotifyState.tokenExpiresAt = Date.now() + expiresInSec * 1000;
+      if (data.refresh_token) {
+        spotifyState.refreshToken = data.refresh_token.trim();
+        saveConfig({ spotifyRefreshToken: spotifyState.refreshToken });
+      }
+      spotifyState.connected = true;
+      spotifyState.error = null;
+      broadcastState();
+
+      // Proactively schedule next background refresh
+      scheduleAutoTokenRefresh(expiresInSec * 1000);
+      return true;
+    } catch (err: any) {
+      spotifyState.error = err.message || "Failed to refresh Spotify token";
+      broadcastState();
+      return false;
     }
-    spotifyState.connected = true;
-    spotifyState.error = null;
-    broadcastState();
-    return true;
-  } catch (err: any) {
-    spotifyState.error = err.message || "Failed to refresh Spotify token";
-    broadcastState();
-    return false;
-  }
+  })().finally(() => {
+    refreshingPromise = null;
+  });
+
+  return refreshingPromise;
 }
 
 export async function getPlaylistName(href: string): Promise<string | null> {
@@ -172,6 +222,189 @@ export async function getPlaylistName(href: string): Promise<string | null> {
     }
   } catch {}
   return null;
+}
+
+export function parseSpotifyTrackUri(input: string): string | null {
+  const trimmed = input.trim();
+  if (!trimmed) return null;
+
+  if (trimmed.startsWith("spotify:track:")) {
+    return trimmed;
+  }
+
+  const webMatch = trimmed.match(/open\.spotify\.com\/track\/([a-zA-Z0-9]+)/);
+  if (webMatch && webMatch[1]) {
+    return `spotify:track:${webMatch[1]}`;
+  }
+
+  // Base62 22-char Spotify ID
+  if (/^[a-zA-Z0-9]{22}$/.test(trimmed)) {
+    return `spotify:track:${trimmed}`;
+  }
+
+  return null;
+}
+
+// Search Spotify tracks by query
+export async function searchSpotifyTracks(query: string, limit: number = 10): Promise<SpotifySearchResult[]> {
+  const trimmed = query.trim();
+  if (!trimmed) return [];
+
+  if (!spotifyState.accessToken || Date.now() >= spotifyState.tokenExpiresAt - 60000) {
+    const refreshed = await refreshSpotifyToken();
+    if (!refreshed) return [];
+  }
+
+  try {
+    const targetLimit = Math.min(20, Math.max(1, limit));
+    let res = await fetch(
+      `https://api.spotify.com/v1/search?q=${encodeURIComponent(trimmed)}&type=track&limit=${targetLimit}`,
+      {
+        headers: {
+          Authorization: `Bearer ${spotifyState.accessToken}`,
+        },
+      }
+    );
+
+    if (res.status === 401) {
+      const refreshed = await refreshSpotifyToken();
+      if (refreshed) {
+        res = await fetch(
+          `https://api.spotify.com/v1/search?q=${encodeURIComponent(trimmed)}&type=track&limit=${targetLimit}`,
+          {
+            headers: {
+              Authorization: `Bearer ${spotifyState.accessToken}`,
+            },
+          }
+        );
+      }
+    }
+
+    if (!res.ok) {
+      const errText = await res.text();
+      console.error(`[spotify] Search error (${res.status}):`, errText);
+      return [];
+    }
+
+    const data = await res.json();
+    return (data.tracks?.items || []).map((t: any) => ({
+      id: t.id,
+      name: t.name || "Unknown Track",
+      artist: t.artists?.map((a: any) => a.name).join(", ") || "Unknown Artist",
+      album: t.album?.name || "",
+      albumArt: t.album?.images?.[0]?.url || null,
+      durationMs: Number(t.duration_ms) || 0,
+      uri: t.uri,
+    }));
+  } catch (err: any) {
+    console.error("[spotify] Search exception:", err.message);
+    return [];
+  }
+}
+
+// Add track directly to Spotify queue
+export async function addTrackToQueue(
+  rawUriOrQuery: string,
+  deviceId?: string
+): Promise<{ success: boolean; message: string; track?: SpotifySearchResult }> {
+  let targetUri = parseSpotifyTrackUri(rawUriOrQuery);
+  let resolvedTrack: SpotifySearchResult | undefined;
+
+  if (!targetUri) {
+    // Treat as search query
+    const results = await searchSpotifyTracks(rawUriOrQuery, 1);
+    if (!results.length) {
+      return { success: false, message: `No matching Spotify track found for "${rawUriOrQuery}"` };
+    }
+    targetUri = results[0].uri;
+    resolvedTrack = results[0];
+  }
+
+  if (!spotifyState.accessToken || Date.now() >= spotifyState.tokenExpiresAt - 60000) {
+    const refreshed = await refreshSpotifyToken();
+    if (!refreshed) {
+      return { success: false, message: "Spotify not authorized or token expired" };
+    }
+  }
+
+  const queryParams = new URLSearchParams({ uri: targetUri });
+  if (deviceId) {
+    queryParams.set("device_id", deviceId);
+  }
+
+  try {
+    let res = await fetch(`https://api.spotify.com/v1/me/player/queue?${queryParams.toString()}`, {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${spotifyState.accessToken}`,
+      },
+    });
+
+    if (res.status === 401) {
+      const refreshed = await refreshSpotifyToken();
+      if (refreshed) {
+        res = await fetch(`https://api.spotify.com/v1/me/player/queue?${queryParams.toString()}`, {
+          method: "POST",
+          headers: {
+            Authorization: `Bearer ${spotifyState.accessToken}`,
+          },
+        });
+      }
+    }
+
+    if (res.status === 204 || res.ok) {
+      setTimeout(getCurrentSongList, 500);
+      return {
+        success: true,
+        message: resolvedTrack
+          ? `Added "${resolvedTrack.name}" to Spotify queue`
+          : "Track added to Spotify queue",
+        track: resolvedTrack,
+      };
+    }
+
+    const errText = await res.text();
+    let msg = `Queue failed (${res.status})`;
+    try {
+      const parsed = JSON.parse(errText);
+      if (parsed.error?.message) msg = parsed.error.message;
+    } catch {
+      if (errText) msg += `: ${errText.slice(0, 100)}`;
+    }
+    return { success: false, message: msg };
+  } catch (err: any) {
+    return { success: false, message: err.message || "Failed to add track to queue" };
+  }
+}
+
+// High-level song request handler (records to history and dispatches queue)
+export async function requestSong(
+  queryOrUri: string,
+  requester: string = "Streamer",
+  source: "web" | "tiktok_chat" = "web",
+  deviceId?: string
+): Promise<SongRequestItem> {
+  const result = await addTrackToQueue(queryOrUri, deviceId);
+
+  const item: SongRequestItem = {
+    id: Math.random().toString(36).slice(2, 9),
+    requester,
+    trackName: result.track ? result.track.name : queryOrUri,
+    artist: result.track ? result.track.artist : "",
+    albumArt: result.track?.albumArt || null,
+    uri: result.track?.uri || queryOrUri,
+    timestamp: Date.now(),
+    source,
+    status: result.success ? "queued" : "failed",
+    error: result.success ? undefined : result.message,
+  };
+
+  if (!state.songRequests) state.songRequests = [];
+  state.songRequests.unshift(item);
+  if (state.songRequests.length > 50) state.songRequests.pop();
+  broadcastState();
+
+  return item;
 }
 
 // Fetch user's accessible playlists
@@ -547,6 +780,8 @@ export async function fetchCurrentlyPlaying() {
       isPlaying: Boolean(data.is_playing),
       playlistName,
       playlistUri,
+      uri: item.uri || null,
+      id: item.id || null,
     };
 
     spotifyState.currentTrack = track;
@@ -564,6 +799,17 @@ export function startSpotifyPolling() {
   if (spotifyPollTimer) clearInterval(spotifyPollTimer);
   spotifyPollTimer = setInterval(fetchCurrentlyPlaying, 3000);
   fetchCurrentlyPlaying();
+
+  // If credentials configured, ensure auto-refresh is active
+  if (spotifyState.refreshToken && spotifyState.clientId && spotifyState.clientSecret) {
+    if (!spotifyState.accessToken || Date.now() >= spotifyState.tokenExpiresAt - 300000) {
+      refreshSpotifyToken().catch((err) => {
+        console.error("[spotify] Initial auto-refresh error:", err);
+      });
+    } else {
+      scheduleAutoTokenRefresh();
+    }
+  }
 }
 
 export function stopSpotifyPolling() {
@@ -571,4 +817,5 @@ export function stopSpotifyPolling() {
     clearInterval(spotifyPollTimer);
     spotifyPollTimer = null;
   }
+  stopAutoTokenRefresh();
 }

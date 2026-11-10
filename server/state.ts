@@ -1,6 +1,6 @@
 import type http from "node:http";
 import { loadConfig } from "./config.ts";
-import type { ServerState, SpotifyInfo, SpotifyState } from "./types.ts";
+import type { ServerState, SongRequestItem, SpotifyInfo, SpotifyState, TikTokChatMessage } from "./types.ts";
 
 export const initialConfig = loadConfig();
 
@@ -36,6 +36,8 @@ export const state: ServerState = {
     activeDevice: null,
     error: null,
   },
+  recentChats: [],
+  songRequests: [],
 };
 
 export const spotifyState: SpotifyState = {
@@ -63,9 +65,23 @@ export function broadcastState() {
     error: state.error,
     logs: state.logs,
     spotify: state.spotify,
+    recentChats: state.recentChats,
+    songRequests: state.songRequests,
   });
 
   const message = `data: ${data}\n\n`;
+  for (let i = sseClients.length - 1; i >= 0; i--) {
+    const res = sseClients[i];
+    try {
+      res.write(message);
+    } catch {
+      sseClients.splice(i, 1);
+    }
+  }
+}
+
+export function broadcastChat(chat: TikTokChatMessage) {
+  const message = `event: chat\ndata: ${JSON.stringify(chat)}\n\n`;
   for (let i = sseClients.length - 1; i >= 0; i--) {
     const res = sseClients[i];
     try {

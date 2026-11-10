@@ -3,13 +3,19 @@ import "./App.css";
 import {
   CurrentSongItem,
   LogEntry,
+  OverlayMarketItem,
+  OverlayMeta,
   ServerState,
+  SongRequestItem,
   SpotifyDevice,
   SpotifyInfo,
+  SpotifySearchResult,
+  TikTokChatMessage,
 } from "./types";
 import { Sidebar } from "./components/Sidebar";
 import { DashboardTab } from "./components/DashboardTab";
 import { ConfigTab } from "./components/ConfigTab";
+import { OverlaysTab } from "./components/OverlaysTab";
 
 const API_BASE = "http://127.0.0.1:3001";
 
@@ -23,7 +29,7 @@ async function openAuthorizeUrl(url: string) {
 }
 
 export default function App() {
-  const [currentPage, setCurrentPage] = useState<"dashboard" | "config">("dashboard");
+  const [currentPage, setCurrentPage] = useState<"dashboard" | "config" | "overlays">("dashboard");
 
   // TikTok & Webhook state
   const [username, setUsername] = useState("");
@@ -54,6 +60,15 @@ export default function App() {
   const [devices, setDevices] = useState<SpotifyDevice[]>([]);
   const [loadingDevices, setLoadingDevices] = useState(false);
 
+  // TikTok Live Chat & Song Request state
+  const [recentChats, setRecentChats] = useState<TikTokChatMessage[]>([]);
+  const [songRequests, setSongRequests] = useState<SongRequestItem[]>([]);
+
+  // Overlays state
+  const [installedOverlays, setInstalledOverlays] = useState<OverlayMeta[]>([]);
+  const [marketCatalog, setMarketCatalog] = useState<OverlayMarketItem[]>([]);
+  const [loadingOverlays, setLoadingOverlays] = useState(false);
+
   const eventSourceRef = useRef<EventSource | null>(null);
 
   // Initial load & SSE connection
@@ -69,6 +84,8 @@ export default function App() {
           setRoomId(data.roomId);
           if (data.error) setErrorMsg(data.error);
           setLogs(data.logs || []);
+          if (data.recentChats) setRecentChats(data.recentChats);
+          if (data.songRequests) setSongRequests(data.songRequests);
           if (data.spotify) {
             setSpotify(data.spotify);
             if (data.spotify.clientId) setSpotifyClientId(data.spotify.clientId);
@@ -85,6 +102,8 @@ export default function App() {
             setRoomId(data.roomId);
             if (data.error) setErrorMsg(data.error);
             setLogs(data.logs || []);
+            if (data.recentChats) setRecentChats(data.recentChats);
+            if (data.songRequests) setSongRequests(data.songRequests);
             if (data.spotify) {
               setSpotify(data.spotify);
               if (data.spotify.clientId) setSpotifyClientId(data.spotify.clientId);
@@ -109,6 +128,12 @@ export default function App() {
             setStatus(data.status);
             setRoomId(data.roomId);
             setLogs(data.logs || []);
+            if (data.recentChats) {
+              setRecentChats(data.recentChats);
+            }
+            if (data.songRequests) {
+              setSongRequests(data.songRequests);
+            }
             if (data.spotify) {
               setSpotify(data.spotify);
             }
@@ -116,6 +141,15 @@ export default function App() {
             console.error("SSE parse error:", e);
           }
         };
+
+        es.addEventListener("chat", (e: MessageEvent) => {
+          try {
+            const chat: TikTokChatMessage = JSON.parse(e.data);
+            setRecentChats((prev) => [chat, ...prev.slice(0, 49)]);
+          } catch (err) {
+            console.error("Failed to parse SSE chat event:", err);
+          }
+        });
 
         es.onerror = () => {
           es.close();
@@ -134,6 +168,16 @@ export default function App() {
       }
     };
   }, []);
+
+  useEffect(() => {
+    fetchOverlays();
+  }, []);
+
+  useEffect(() => {
+    if (currentPage === "overlays") {
+      fetchOverlays();
+    }
+  }, [currentPage]);
 
   useEffect(() => {
     if (spotify.connected) {
@@ -434,6 +478,161 @@ export default function App() {
     }
   }
 
+  async function fetchOverlays() {
+    setLoadingOverlays(true);
+    try {
+      let instData: any = null;
+      let mktData: any = null;
+
+      try {
+        const res = await fetch(`${API_BASE}/api/overlays`);
+        if (res.ok) instData = await res.json();
+      } catch {
+        const res = await fetch("/api/overlays");
+        if (res.ok) instData = await res.json();
+      }
+
+      try {
+        const res = await fetch(`${API_BASE}/api/overlays/market`);
+        if (res.ok) mktData = await res.json();
+      } catch {
+        const res = await fetch("/api/overlays/market");
+        if (res.ok) mktData = await res.json();
+      }
+
+      if (instData?.overlays) setInstalledOverlays(instData.overlays);
+      if (mktData?.catalog) setMarketCatalog(mktData.catalog);
+    } catch (err: any) {
+      console.error("[overlays] Fetch failed:", err.message);
+    } finally {
+      setLoadingOverlays(false);
+    }
+  }
+
+  async function handleInstallOverlay(overlayId: string) {
+    try {
+      const res = await fetch(`${API_BASE}/api/overlays/install`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ overlayId }),
+      });
+      const data = await res.json();
+      if (data.success) {
+        setTestResult(`Overlay "${data.overlay?.name || overlayId}" installed and ready for OBS!`);
+        await fetchOverlays();
+      } else {
+        setErrorMsg(`Failed to install overlay: ${data.error}`);
+      }
+    } catch (err: any) {
+      setErrorMsg(`Error installing overlay: ${err.message}`);
+    }
+  }
+
+  async function handleCreateCustomOverlay(data: any) {
+    try {
+      const res = await fetch(`${API_BASE}/api/overlays/create`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(data),
+      });
+      const resData = await res.json();
+      if (resData.success) {
+        setTestResult(`Custom overlay "${data.name}" created at /overlays/${resData.overlay?.id}/`);
+        await fetchOverlays();
+      } else {
+        setErrorMsg(`Failed to create overlay: ${resData.error}`);
+      }
+    } catch (err: any) {
+      setErrorMsg(`Error creating overlay: ${err.message}`);
+    }
+  }
+
+  async function handleDeleteOverlay(id: string) {
+    try {
+      const res = await fetch(`${API_BASE}/api/overlays/${encodeURIComponent(id)}`, {
+        method: "DELETE",
+      });
+      const data = await res.json();
+      if (data.success) {
+        setTestResult(`Overlay "${id}" deleted.`);
+        await fetchOverlays();
+      } else {
+        setErrorMsg(`Failed to delete overlay: ${data.error}`);
+      }
+    } catch (err: any) {
+      setErrorMsg(`Error deleting overlay: ${err.message}`);
+    }
+  }
+
+  async function handleSearchSpotify(query: string): Promise<SpotifySearchResult[]> {
+    try {
+      const res = await fetch(`${API_BASE}/api/spotify/search?q=${encodeURIComponent(query)}&limit=8`);
+      if (res.ok) {
+        const data = await res.json();
+        return data.tracks || [];
+      }
+    } catch (e) {
+      console.error("Spotify search error:", e);
+    }
+    return [];
+  }
+
+  async function handleRequestSong(queryOrUri: string, requester: string = "Streamer"): Promise<boolean> {
+    try {
+      const res = await fetch(`${API_BASE}/api/spotify/request`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ query: queryOrUri, requester }),
+      });
+      const data = await res.json();
+      if (data.success) {
+        setTestResult(`Queued "${data.item?.trackName || queryOrUri}" in Spotify!`);
+        handleFetchSongList();
+        return true;
+      } else {
+        setErrorMsg(`Song request failed: ${data.error || "Could not queue track"}`);
+        return false;
+      }
+    } catch (err: any) {
+      setErrorMsg(`Song request error: ${err.message}`);
+      return false;
+    }
+  }
+
+  async function handleClearSongRequests() {
+    try {
+      await fetch(`${API_BASE}/api/spotify/clear-requests`, { method: "POST" });
+      setSongRequests([]);
+    } catch (e) {
+      console.error("Failed to clear song requests:", e);
+    }
+  }
+
+  async function handleTestChat(comment?: string) {
+    try {
+      const res = await fetch(`${API_BASE}/api/tiktok/test-chat`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ comment: comment || "Hello streamer! This is a test chat message for TTS reader." }),
+      });
+      const data = await res.json();
+      if (data.success && data.chat) {
+        setRecentChats((prev) => [data.chat, ...prev.slice(0, 49)]);
+      }
+    } catch (err: any) {
+      setErrorMsg(`Test chat failed: ${err.message}`);
+    }
+  }
+
+  async function handleClearChats() {
+    try {
+      await fetch(`${API_BASE}/api/tiktok/clear-chats`, { method: "POST" });
+      setRecentChats([]);
+    } catch (e) {
+      console.error("Failed to clear chats:", e);
+    }
+  }
+
   return (
     <div className="app-layout">
       {/* Sidebar Navigation */}
@@ -485,6 +684,8 @@ export default function App() {
             loadingSongList={loadingSongList}
             devices={devices}
             loadingDevices={loadingDevices}
+            recentChats={recentChats}
+            songRequests={songRequests}
             onConnect={() => handleConnect()}
             onDisconnect={handleDisconnect}
             onTestWebhook={handleTestWebhook}
@@ -497,9 +698,14 @@ export default function App() {
             onPlayTrack={handlePlayTrack}
             onFetchDevices={handleFetchDevices}
             onSelectDevice={handleSelectDevice}
+            onSearchSpotify={handleSearchSpotify}
+            onRequestSong={handleRequestSong}
+            onClearSongRequests={handleClearSongRequests}
+            onTestChat={handleTestChat}
+            onClearChats={handleClearChats}
             onGoToConfig={() => setCurrentPage("config")}
           />
-        ) : (
+        ) : currentPage === "config" ? (
           <ConfigTab
             username={username}
             setUsername={setUsername}
@@ -523,6 +729,17 @@ export default function App() {
             onSaveSpotifyConfig={handleSaveSpotifyConfig}
             onRefreshSpotify={handleRefreshSpotify}
             onDisconnectSpotify={handleDisconnectSpotify}
+          />
+        ) : (
+          <OverlaysTab
+            apiBase={API_BASE}
+            installedOverlays={installedOverlays}
+            marketCatalog={marketCatalog}
+            loading={loadingOverlays}
+            onRefresh={fetchOverlays}
+            onInstall={handleInstallOverlay}
+            onCreateCustom={handleCreateCustomOverlay}
+            onDeleteOverlay={handleDeleteOverlay}
           />
         )}
       </main>

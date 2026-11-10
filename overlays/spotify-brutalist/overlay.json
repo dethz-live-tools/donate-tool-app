@@ -1,0 +1,10 @@
+{
+  "id": "spotify-brutalist",
+  "name": "RawBlock Spotify Player",
+  "description": "Catppuccin Macchiato & Sapphire brutalist Now Playing card with live progress and album art.",
+  "version": "1.0.0",
+  "author": "dethz",
+  "category": "spotify",
+  "width": 480,
+  "height": 140
+}
