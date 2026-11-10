@@ -42,7 +42,12 @@
   --status-error: var(--ctp-red);
   --link-color: var(--ctp-blue);
 
-  font-family: "Work Sans", system-ui, -apple-system, sans-serif;
+  /* Font stacks with IBM Plex Sans Thai fallback */
+  --font-sans: "Work Sans", "IBM Plex Sans Thai", system-ui, -apple-system, sans-serif;
+  --font-display: "Archivo Black", "IBM Plex Sans Thai", sans-serif;
+  --font-mono: "Space Mono", "IBM Plex Sans Thai", monospace;
+
+  font-family: var(--font-sans);
   color: var(--text-primary);
   background-color: var(--bg-app);
   line-height: 1.5;
@@ -70,7 +75,7 @@ body {
 
 /* Typography */
 h1, h2, h3, h4 {
-  font-family: "Archivo Black", sans-serif;
+  font-family: var(--font-display);
   text-transform: uppercase;
   letter-spacing: 0.5px;
 }
@@ -91,7 +96,7 @@ h3 {
 }
 
 .mono-font {
-  font-family: "Space Mono", monospace;
+  font-family: var(--font-mono);
 }
 
 /* App Layout */
@@ -133,7 +138,7 @@ h3 {
 }
 
 .sidebar-tab {
-  font-family: "Archivo Black", sans-serif;
+  font-family: var(--font-display);
   font-size: 13px;
   text-transform: uppercase;
   letter-spacing: 1.5px;
@@ -193,7 +198,7 @@ h3 {
 }
 
 .header-subtitle {
-  font-family: "Space Mono", monospace;
+  font-family: var(--font-mono);
   font-size: 12px;
   color: var(--text-secondary);
   text-transform: uppercase;
@@ -202,7 +207,7 @@ h3 {
 
 /* Status Chips */
 .status-chip {
-  font-family: "Space Mono", monospace;
+  font-family: var(--font-mono);
   font-size: 12px;
   font-weight: 700;
   text-transform: uppercase;
@@ -272,7 +277,7 @@ h3 {
 }
 
 .form-label {
-  font-family: "Archivo Black", sans-serif;
+  font-family: var(--font-display);
   font-size: 12px;
   text-transform: uppercase;
   letter-spacing: 1px;
@@ -284,7 +289,7 @@ h3 {
   color: var(--text-primary);
   border: 3px solid var(--border-color);
   padding: 10px 14px;
-  font-family: "Space Mono", monospace;
+  font-family: var(--font-mono);
   font-size: 14px;
   outline: none;
 }
@@ -306,7 +311,7 @@ h3 {
 }
 
 .form-helper {
-  font-family: "Work Sans", sans-serif;
+  font-family: var(--font-sans);
   font-size: 12px;
   color: var(--text-secondary);
 }
@@ -320,7 +325,7 @@ h3 {
 }
 
 .btn {
-  font-family: "Archivo Black", sans-serif;
+  font-family: var(--font-display);
   font-size: 13px;
   text-transform: uppercase;
   letter-spacing: 2px;
@@ -395,7 +400,7 @@ h3 {
   background-color: var(--bg-sunken);
   border: 3px solid var(--ctp-surface1);
   padding: 14px;
-  font-family: "Space Mono", monospace;
+  font-family: var(--font-mono);
   font-size: 13px;
   color: var(--ctp-mauve);
   white-space: pre-wrap;
@@ -408,7 +413,7 @@ h3 {
   background-color: var(--bg-sunken);
   color: var(--status-error);
   padding: 12px 16px;
-  font-family: "Space Mono", monospace;
+  font-family: var(--font-mono);
   font-size: 13px;
   display: flex;
   align-items: center;
@@ -441,7 +446,7 @@ h3 {
   display: flex;
   flex-direction: column;
   gap: 6px;
-  font-family: "Space Mono", monospace;
+  font-family: var(--font-mono);
   font-size: 12px;
 }
 
@@ -508,7 +513,7 @@ h3 {
 }
 
 .empty-state {
-  font-family: "Space Mono", monospace;
+  font-family: var(--font-mono);
   color: var(--text-secondary);
   text-align: center;
   padding: 28px 16px;
@@ -546,7 +551,7 @@ h3 {
   display: flex;
   align-items: center;
   justify-content: center;
-  font-family: "Space Mono", monospace;
+  font-family: var(--font-mono);
   font-size: 11px;
   color: var(--text-secondary);
 }
@@ -560,21 +565,21 @@ h3 {
 }
 
 .spotify-track-title {
-  font-family: "Archivo Black", sans-serif;
+  font-family: var(--font-display);
   font-size: 18px;
   color: var(--accent-primary);
   line-height: 1.2;
 }
 
 .spotify-artist {
-  font-family: "Work Sans", sans-serif;
+  font-family: var(--font-sans);
   font-size: 14px;
   font-weight: 600;
   color: var(--text-primary);
 }
 
 .spotify-album {
-  font-family: "Space Mono", monospace;
+  font-family: var(--font-mono);
   font-size: 12px;
   color: var(--text-secondary);
 }
@@ -583,7 +588,7 @@ h3 {
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  font-family: "Space Mono", monospace;
+  font-family: var(--font-mono);
   font-size: 11px;
   font-weight: 700;
   color: var(--ctp-lavender);
@@ -602,7 +607,7 @@ h3 {
 }
 
 .ctrl-btn {
-  font-family: "Archivo Black", sans-serif;
+  font-family: var(--font-display);
   font-size: 11px;
   text-transform: uppercase;
   letter-spacing: 1px;
@@ -649,7 +654,7 @@ h3 {
 .spotify-time-row {
   display: flex;
   justify-content: space-between;
-  font-family: "Space Mono", monospace;
+  font-family: var(--font-mono);
   font-size: 11px;
   color: var(--text-muted);
 }
@@ -689,7 +694,7 @@ h3 {
   border: 2px solid var(--border-color);
   border-radius: 0;
   padding: 6px 10px;
-  font-family: "Space Mono", monospace;
+  font-family: var(--font-mono);
   font-size: 11px;
   font-weight: 700;
   cursor: pointer;
@@ -726,7 +731,7 @@ h3 {
 }
 
 .spotify-song-index {
-  font-family: "Space Mono", monospace;
+  font-family: var(--font-mono);
   font-size: 11px;
   color: var(--ctp-subtext0);
   min-width: 20px;
@@ -755,7 +760,7 @@ h3 {
 }
 
 .spotify-song-title {
-  font-family: "Work Sans", sans-serif;
+  font-family: var(--font-sans);
   font-weight: 700;
   font-size: 12px;
   color: var(--text-primary);
@@ -765,7 +770,7 @@ h3 {
 }
 
 .spotify-song-artist {
-  font-family: "Work Sans", sans-serif;
+  font-family: var(--font-sans);
   font-size: 11px;
   color: var(--ctp-subtext0);
   white-space: nowrap;
@@ -774,7 +779,7 @@ h3 {
 }
 
 .spotify-now-playing-chip {
-  font-family: "Space Mono", monospace;
+  font-family: var(--font-mono);
   font-size: 9px;
   font-weight: 700;
   color: var(--status-success);
@@ -785,7 +790,7 @@ h3 {
 }
 
 .spotify-song-duration {
-  font-family: "Space Mono", monospace;
+  font-family: var(--font-mono);
   font-size: 11px;
   color: var(--ctp-subtext0);
   margin-right: 6px;
@@ -845,7 +850,7 @@ h3 {
 }
 
 .spotify-playlist-title {
-  font-family: "Work Sans", sans-serif;
+  font-family: var(--font-sans);
   font-weight: 700;
   font-size: 12px;
   color: var(--text-primary);
@@ -855,7 +860,7 @@ h3 {
 }
 
 .spotify-playlist-count {
-  font-family: "Space Mono", monospace;
+  font-family: var(--font-mono);
   font-size: 10px;
   color: var(--ctp-subtext0);
 }
