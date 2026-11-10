@@ -3,9 +3,12 @@ import { saveConfig } from "../config.ts";
 import {
   controlPlayer,
   fetchCurrentlyPlaying,
+  getAvailableDevices,
+  getCurrentSongList,
   getUserPlaylists,
   startSpotifyPolling,
   stopSpotifyPolling,
+  transferPlayback,
 } from "../services/spotify.ts";
 import { broadcastState, getSpotifyPublicState, spotifyState } from "../state.ts";
 import { parseJsonBody, PORT, sendJson } from "../utils.ts";
@@ -203,6 +206,47 @@ export async function handleSpotifyRoutes(
     return true;
   }
 
+  // Get available Spotify devices
+  if (url.pathname === "/api/spotify/devices" && req.method === "GET") {
+    try {
+      const devices = await getAvailableDevices();
+      sendJson(res, 200, { success: true, count: devices.length, devices });
+    } catch (err: any) {
+      sendJson(res, 200, { success: false, error: err.message, devices: [] });
+    }
+    return true;
+  }
+
+  // Transfer playback to selected device
+  if (url.pathname === "/api/spotify/player/device" && req.method === "POST") {
+    try {
+      const parsed = await parseJsonBody(req);
+      if (!parsed.deviceId) {
+        sendJson(res, 400, { success: false, error: "deviceId is required" });
+        return true;
+      }
+      await transferPlayback(parsed.deviceId, parsed.play !== false);
+      sendJson(res, 200, { success: true, deviceId: parsed.deviceId });
+    } catch (err: any) {
+      sendJson(res, 200, { success: false, error: err.message });
+    }
+    return true;
+  }
+
+  // Get current playing song list (active track + queue)
+  if (
+    (url.pathname === "/api/spotify/current-song-list" || url.pathname === "/api/spotify/queue") &&
+    req.method === "GET"
+  ) {
+    try {
+      const songList = await getCurrentSongList();
+      sendJson(res, 200, { success: true, ...songList });
+    } catch (err: any) {
+      sendJson(res, 200, { success: false, error: err.message, tracks: [] });
+    }
+    return true;
+  }
+
   // Get user's playlists
   if (url.pathname === "/api/spotify/playlists" && req.method === "GET") {
     try {
@@ -224,7 +268,11 @@ export async function handleSpotifyRoutes(
       } catch {}
 
       if (action === "play") {
-        await controlPlayer("play", "PUT", bodyPayload?.context_uri ? { context_uri: bodyPayload.context_uri } : undefined);
+        const playPayload: any = {};
+        if (bodyPayload?.context_uri) playPayload.context_uri = bodyPayload.context_uri;
+        if (bodyPayload?.uris) playPayload.uris = bodyPayload.uris;
+        if (bodyPayload?.offset) playPayload.offset = bodyPayload.offset;
+        await controlPlayer("play", "PUT", Object.keys(playPayload).length ? playPayload : undefined);
       } else if (action === "pause") {
         await controlPlayer("pause", "PUT");
       } else if (action === "next") {

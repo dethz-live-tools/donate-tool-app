@@ -663,11 +663,134 @@ h3 {
   gap: 12px;
 }
 
-.spotify-playlist-section {
-  margin-top: 16px;
-  border-top: 2px solid var(--ctp-surface1);
-  padding-top: 14px;
+.spotify-player-selector-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  background-color: var(--ctp-surface0);
+  border: 2px solid var(--ctp-surface1);
+  padding: 8px 12px;
+  margin-bottom: 12px;
 }
+
+.player-selector-label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: 1;
+}
+
+.player-select-dropdown {
+  flex: 1;
+  max-width: 320px;
+  background-color: var(--bg-sunken);
+  color: var(--text-primary);
+  border: 2px solid var(--border-color);
+  border-radius: 0;
+  padding: 6px 10px;
+  font-family: "Space Mono", monospace;
+  font-size: 11px;
+  font-weight: 700;
+  cursor: pointer;
+  outline: none;
+}
+
+.player-select-dropdown:focus {
+  border-color: var(--accent-primary);
+}
+
+.spotify-song-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  max-height: 320px;
+  overflow-y: auto;
+  border: 2px solid var(--ctp-surface1);
+  background-color: var(--bg-sunken);
+  padding: 8px;
+}
+
+.spotify-song-card {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  background-color: var(--ctp-surface0);
+  border: 2px solid var(--ctp-surface1);
+  padding: 6px 10px;
+}
+
+.spotify-song-card.is-playing {
+  border-color: var(--status-success);
+  background-color: rgba(166, 218, 149, 0.08);
+}
+
+.spotify-song-index {
+  font-family: "Space Mono", monospace;
+  font-size: 11px;
+  color: var(--ctp-subtext0);
+  min-width: 20px;
+  text-align: right;
+}
+
+.spotify-song-cover {
+  width: 36px;
+  height: 36px;
+  object-fit: cover;
+  border: 1px solid var(--ctp-surface2);
+  flex-shrink: 0;
+  background-color: var(--ctp-crust);
+  display: grid;
+  place-content: center;
+  font-size: 7px;
+  color: var(--ctp-subtext0);
+}
+
+.spotify-song-meta {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.spotify-song-title {
+  font-family: "Work Sans", sans-serif;
+  font-weight: 700;
+  font-size: 12px;
+  color: var(--text-primary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.spotify-song-artist {
+  font-family: "Work Sans", sans-serif;
+  font-size: 11px;
+  color: var(--ctp-subtext0);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.spotify-now-playing-chip {
+  font-family: "Space Mono", monospace;
+  font-size: 9px;
+  font-weight: 700;
+  color: var(--status-success);
+  background-color: rgba(166, 218, 149, 0.15);
+  border: 1px solid var(--status-success);
+  padding: 1px 5px;
+  letter-spacing: 0.5px;
+}
+
+.spotify-song-duration {
+  font-family: "Space Mono", monospace;
+  font-size: 11px;
+  color: var(--ctp-subtext0);
+  margin-right: 6px;
+}
+
 
 .spotify-playlist-header {
   display: flex;

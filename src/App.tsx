@@ -1,6 +1,12 @@
 import React, { useState, useEffect, useRef } from "react";
 import "./App.css";
-import { LogEntry, ServerState, SpotifyInfo, SpotifyPlaylist } from "./types";
+import {
+  CurrentSongItem,
+  LogEntry,
+  ServerState,
+  SpotifyDevice,
+  SpotifyInfo,
+} from "./types";
 import { Sidebar } from "./components/Sidebar";
 import { DashboardTab } from "./components/DashboardTab";
 import { ConfigTab } from "./components/ConfigTab";
@@ -41,8 +47,11 @@ export default function App() {
   const [spotifyClientId, setSpotifyClientId] = useState("");
   const [spotifyClientSecret, setSpotifyClientSecret] = useState("");
   const [savingSpotify, setSavingSpotify] = useState(false);
-  const [playlists, setPlaylists] = useState<SpotifyPlaylist[]>([]);
-  const [loadingPlaylists, setLoadingPlaylists] = useState(false);
+  const [currentSongs, setCurrentSongs] = useState<CurrentSongItem[]>([]);
+  const [songListContext, setSongListContext] = useState<string | null>(null);
+  const [loadingSongList, setLoadingSongList] = useState(false);
+  const [devices, setDevices] = useState<SpotifyDevice[]>([]);
+  const [loadingDevices, setLoadingDevices] = useState(false);
 
   const eventSourceRef = useRef<EventSource | null>(null);
 
@@ -124,6 +133,19 @@ export default function App() {
       }
     };
   }, []);
+
+  useEffect(() => {
+    if (spotify.connected) {
+      handleFetchDevices();
+      handleFetchSongList();
+    }
+  }, [spotify.connected]);
+
+  useEffect(() => {
+    if (spotify.connected && spotify.currentTrack) {
+      handleFetchSongList();
+    }
+  }, [spotify.currentTrack?.name]);
 
   async function handleConnect(e?: React.FormEvent) {
     if (e) e.preventDefault();
@@ -299,36 +321,79 @@ export default function App() {
     }
   }
 
-  async function handleFetchPlaylists() {
-    setLoadingPlaylists(true);
+  async function handleFetchSongList() {
+    setLoadingSongList(true);
     try {
-      const res = await fetch(`${API_BASE}/api/spotify/playlists`);
+      const res = await fetch(`${API_BASE}/api/spotify/current-song-list`);
       const data = await res.json();
       if (data.success) {
-        setPlaylists(data.playlists || []);
+        setCurrentSongs(data.tracks || []);
+        setSongListContext(data.contextName || null);
       } else if (data.error) {
-        setErrorMsg(`Playlists error: ${data.error}`);
+        setErrorMsg(`Song list error: ${data.error}`);
       }
     } catch (err: any) {
-      setErrorMsg(`Failed to fetch playlists: ${err.message}`);
+      setErrorMsg(`Failed to fetch song list: ${err.message}`);
     } finally {
-      setLoadingPlaylists(false);
+      setLoadingSongList(false);
     }
   }
 
-  async function handlePlayPlaylist(uri: string) {
+  async function handleFetchDevices() {
+    setLoadingDevices(true);
+    try {
+      const res = await fetch(`${API_BASE}/api/spotify/devices`);
+      const data = await res.json();
+      if (data.success) {
+        setDevices(data.devices || []);
+      } else if (data.error) {
+        setErrorMsg(`Devices error: ${data.error}`);
+      }
+    } catch (err: any) {
+      setErrorMsg(`Failed to fetch devices: ${err.message}`);
+    } finally {
+      setLoadingDevices(false);
+    }
+  }
+
+  async function handleSelectDevice(deviceId: string) {
+    if (!deviceId) return;
+    try {
+      const res = await fetch(`${API_BASE}/api/spotify/player/device`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ deviceId }),
+      });
+      const data = await res.json();
+      if (data.success) {
+        setTestResult("Playback transferred to selected device");
+        setTimeout(() => {
+          handleFetchDevices();
+          handleFetchSongList();
+        }, 600);
+      } else {
+        setErrorMsg(`Device transfer error: ${data.error}`);
+      }
+    } catch (err: any) {
+      setErrorMsg(`Failed to transfer playback: ${err.message}`);
+    }
+  }
+
+  async function handlePlayTrack(uri: string) {
     try {
       const res = await fetch(`${API_BASE}/api/spotify/player/play`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ context_uri: uri }),
+        body: JSON.stringify({ uris: [uri] }),
       });
       const data = await res.json();
       if (!data.success) {
         setErrorMsg(`Spotify play error: ${data.error}`);
+      } else {
+        setTimeout(handleFetchSongList, 700);
       }
     } catch (err: any) {
-      setErrorMsg(`Failed to play playlist: ${err.message}`);
+      setErrorMsg(`Failed to play track: ${err.message}`);
     }
   }
 
@@ -378,16 +443,21 @@ export default function App() {
             testing={testing}
             spotify={spotify}
             logs={logs}
-            playlists={playlists}
-            loadingPlaylists={loadingPlaylists}
+            currentSongs={currentSongs}
+            songListContext={songListContext}
+            loadingSongList={loadingSongList}
+            devices={devices}
+            loadingDevices={loadingDevices}
             onConnect={() => handleConnect()}
             onDisconnect={handleDisconnect}
             onTestWebhook={handleTestWebhook}
             onClearLogs={() => setLogs([])}
             onRefreshSpotify={handleRefreshSpotify}
             onPlayerControl={handlePlayerControl}
-            onFetchPlaylists={handleFetchPlaylists}
-            onPlayPlaylist={handlePlayPlaylist}
+            onFetchSongList={handleFetchSongList}
+            onPlayTrack={handlePlayTrack}
+            onFetchDevices={handleFetchDevices}
+            onSelectDevice={handleSelectDevice}
             onGoToConfig={() => setCurrentPage("config")}
           />
         ) : (

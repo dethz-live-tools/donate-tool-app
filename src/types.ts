@@ -39,11 +39,39 @@ export interface SpotifyPlaylist {
   collaborative: boolean;
 }
 
+export interface SpotifyDevice {
+  id: string;
+  name: string;
+  type: string;
+  isActive: boolean;
+  volumePercent?: number;
+}
+
+export interface CurrentSongItem {
+  id: string;
+  name: string;
+  artist: string;
+  album: string;
+  albumArt: string | null;
+  durationMs: number;
+  uri: string;
+  isPlaying: boolean;
+}
+
+export interface CurrentSongListResponse {
+  contextName: string | null;
+  contextType: string | null;
+  contextUri: string | null;
+  total: number;
+  tracks: CurrentSongItem[];
+}
+
 export interface SpotifyInfo {
   clientId: string;
   hasClientSecret?: boolean;
   connected: boolean;
   currentTrack: SpotifyTrack | null;
+  activeDevice?: SpotifyDevice | null;
   error: string | null;
 }
 

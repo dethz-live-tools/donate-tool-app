@@ -1,6 +1,12 @@
 import { saveConfig } from "../config.ts";
 import { broadcastState, spotifyState } from "../state.ts";
-import type { SpotifyPlaylist, SpotifyTrack } from "../types.ts";
+import type {
+  CurrentSongItem,
+  CurrentSongListResponse,
+  SpotifyDevice,
+  SpotifyPlaylist,
+  SpotifyTrack,
+} from "../types.ts";
 
 const playlistCache = new Map<string, string>();
 let spotifyPollTimer: NodeJS.Timeout | null = null;
@@ -155,6 +161,162 @@ export async function getUserPlaylists(): Promise<SpotifyPlaylist[]> {
   }
 }
 
+// Fetch available Spotify players/devices
+export async function getAvailableDevices(): Promise<SpotifyDevice[]> {
+  if (!spotifyState.connected || !spotifyState.refreshToken) {
+    return [];
+  }
+  if (!spotifyState.accessToken || Date.now() >= spotifyState.tokenExpiresAt - 60000) {
+    const refreshed = await refreshSpotifyToken();
+    if (!refreshed) return [];
+  }
+
+  try {
+    let res = await fetch("https://api.spotify.com/v1/me/player/devices", {
+      headers: {
+        Authorization: `Bearer ${spotifyState.accessToken}`,
+      },
+    });
+
+    if (res.status === 401) {
+      const refreshed = await refreshSpotifyToken();
+      if (refreshed) {
+        res = await fetch("https://api.spotify.com/v1/me/player/devices", {
+          headers: {
+            Authorization: `Bearer ${spotifyState.accessToken}`,
+          },
+        });
+      }
+    }
+
+    if (!res.ok) {
+      return [];
+    }
+
+    const data = await res.json();
+    return (data.devices || []).map((d: any) => ({
+      id: d.id,
+      name: d.name,
+      type: d.type || "Device",
+      isActive: Boolean(d.is_active),
+      volumePercent: typeof d.volume_percent === "number" ? d.volume_percent : undefined,
+    }));
+  } catch (err: any) {
+    console.error("[spotify] Error fetching devices:", err.message);
+    return [];
+  }
+}
+
+// Transfer playback to selected device
+export async function transferPlayback(deviceId: string, play: boolean = true): Promise<boolean> {
+  if (!spotifyState.accessToken || Date.now() >= spotifyState.tokenExpiresAt - 60000) {
+    const refreshed = await refreshSpotifyToken();
+    if (!refreshed) {
+      throw new Error("Spotify not authorized or token refresh failed");
+    }
+  }
+
+  const res = await fetch("https://api.spotify.com/v1/me/player", {
+    method: "PUT",
+    headers: {
+      Authorization: `Bearer ${spotifyState.accessToken}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      device_ids: [deviceId],
+      play,
+    }),
+  });
+
+  if (res.status === 204 || res.ok) {
+    setTimeout(fetchCurrentlyPlaying, 500);
+    return true;
+  }
+
+  const errText = await res.text();
+  throw new Error(`Failed to transfer playback: ${errText.slice(0, 150)}`);
+}
+
+// Fetch current playing song list (active track + upcoming queue)
+export async function getCurrentSongList(): Promise<CurrentSongListResponse> {
+  if (!spotifyState.connected || !spotifyState.refreshToken) {
+    return { contextName: null, contextType: null, contextUri: null, total: 0, tracks: [] };
+  }
+  if (!spotifyState.accessToken || Date.now() >= spotifyState.tokenExpiresAt - 60000) {
+    const refreshed = await refreshSpotifyToken();
+    if (!refreshed) return { contextName: null, contextType: null, contextUri: null, total: 0, tracks: [] };
+  }
+
+  try {
+    let res = await fetch("https://api.spotify.com/v1/me/player/queue", {
+      headers: {
+        Authorization: `Bearer ${spotifyState.accessToken}`,
+      },
+    });
+
+    if (res.status === 401) {
+      const refreshed = await refreshSpotifyToken();
+      if (refreshed) {
+        res = await fetch("https://api.spotify.com/v1/me/player/queue", {
+          headers: {
+            Authorization: `Bearer ${spotifyState.accessToken}`,
+          },
+        });
+      }
+    }
+
+    if (!res.ok) {
+      const errText = await res.text();
+      console.error(`[spotify] Queue fetch failed (${res.status}):`, errText);
+      return { contextName: null, contextType: null, contextUri: null, total: 0, tracks: [] };
+    }
+
+    const data = await res.json();
+    const tracks: CurrentSongItem[] = [];
+
+    if (data.currently_playing && data.currently_playing.id) {
+      const cp = data.currently_playing;
+      tracks.push({
+        id: cp.id,
+        name: cp.name || "Unknown Track",
+        artist: cp.artists?.map((a: any) => a.name).join(", ") || cp.show?.name || "Unknown Artist",
+        album: cp.album?.name || cp.show?.publisher || "",
+        albumArt: cp.album?.images?.[0]?.url || cp.images?.[0]?.url || null,
+        durationMs: Number(cp.duration_ms) || 0,
+        uri: cp.uri,
+        isPlaying: true,
+      });
+    }
+
+    for (const item of (data.queue || [])) {
+      if (!item || !item.id) continue;
+      tracks.push({
+        id: item.id,
+        name: item.name || "Unknown Track",
+        artist: item.artists?.map((a: any) => a.name).join(", ") || item.show?.name || "Unknown Artist",
+        album: item.album?.name || item.show?.publisher || "",
+        albumArt: item.album?.images?.[0]?.url || item.images?.[0]?.url || null,
+        durationMs: Number(item.duration_ms) || 0,
+        uri: item.uri,
+        isPlaying: false,
+      });
+    }
+
+    const contextName = spotifyState.currentTrack?.playlistName || (tracks.length ? "Player Queue" : null);
+
+    return {
+      contextName,
+      contextType: spotifyState.currentTrack?.playlistUri ? "playlist" : "queue",
+      contextUri: spotifyState.currentTrack?.playlistUri || null,
+      total: tracks.length,
+      tracks,
+    };
+  } catch (err: any) {
+    console.error("[spotify] Error fetching current song list:", err.message);
+    return { contextName: null, contextType: null, contextUri: null, total: 0, tracks: [] };
+  }
+}
+
 // Control Spotify playback (play, pause, next, previous)
 export async function controlPlayer(
   endpoint: "play" | "pause" | "next" | "previous",
@@ -281,6 +443,18 @@ export async function fetchCurrentlyPlaying() {
     }
 
     const item = data.item;
+    if (data.device) {
+      spotifyState.activeDevice = {
+        id: data.device.id,
+        name: data.device.name,
+        type: data.device.type || "Device",
+        isActive: Boolean(data.device.is_active),
+        volumePercent: typeof data.device.volume_percent === "number" ? data.device.volume_percent : undefined,
+      };
+    } else {
+      spotifyState.activeDevice = null;
+    }
+
     const track: SpotifyTrack = {
       name: item.name || "Unknown Track",
       artist:

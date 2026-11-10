@@ -1,5 +1,10 @@
 import React from "react";
-import { LogEntry, SpotifyInfo, SpotifyPlaylist } from "../types";
+import {
+  CurrentSongItem,
+  LogEntry,
+  SpotifyDevice,
+  SpotifyInfo,
+} from "../types";
 
 interface DashboardTabProps {
   username: string;
@@ -9,16 +14,21 @@ interface DashboardTabProps {
   testing: boolean;
   spotify: SpotifyInfo;
   logs: LogEntry[];
-  playlists?: SpotifyPlaylist[];
-  loadingPlaylists?: boolean;
+  currentSongs?: CurrentSongItem[];
+  songListContext?: string | null;
+  loadingSongList?: boolean;
+  devices?: SpotifyDevice[];
+  loadingDevices?: boolean;
   onConnect: () => void;
   onDisconnect: () => void;
   onTestWebhook: () => void;
   onClearLogs: () => void;
   onRefreshSpotify: () => void;
   onPlayerControl: (action: "play" | "pause" | "next" | "previous") => void;
-  onFetchPlaylists?: () => void;
-  onPlayPlaylist?: (uri: string) => void;
+  onFetchSongList?: () => void;
+  onPlayTrack?: (uri: string) => void;
+  onFetchDevices?: () => void;
+  onSelectDevice?: (deviceId: string) => void;
   onGoToConfig: () => void;
 }
 
@@ -38,16 +48,21 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({
   testing,
   spotify,
   logs,
-  playlists = [],
-  loadingPlaylists = false,
+  currentSongs = [],
+  songListContext = null,
+  loadingSongList = false,
+  devices = [],
+  loadingDevices = false,
   onConnect,
   onDisconnect,
   onTestWebhook,
   onClearLogs,
   onRefreshSpotify,
   onPlayerControl,
-  onFetchPlaylists,
-  onPlayPlaylist,
+  onFetchSongList,
+  onPlayTrack,
+  onFetchDevices,
+  onSelectDevice,
   onGoToConfig,
 }) => {
   const track = spotify.currentTrack;
@@ -158,6 +173,50 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({
             >
               RETRY
             </button>
+          </div>
+        )}
+
+        {/* Player / Device Selector */}
+        {spotify.connected && (
+          <div className="spotify-player-selector-row">
+            <div className="player-selector-label">
+              <span className="mono-font" style={{ fontSize: "11px", fontWeight: "bold" }}>
+                PLAYER:
+              </span>
+              <select
+                className="player-select-dropdown"
+                value={spotify.activeDevice?.id || ""}
+                onChange={(e) => onSelectDevice?.(e.target.value)}
+                disabled={loadingDevices || !devices.length}
+              >
+                {devices.length === 0 ? (
+                  <option value="">
+                    {spotify.activeDevice?.name
+                      ? `${spotify.activeDevice.name} (${spotify.activeDevice.type})`
+                      : "No active Spotify player"}
+                  </option>
+                ) : (
+                  devices.map((d) => (
+                    <option key={d.id} value={d.id}>
+                      {d.isActive ? "▶ " : ""}
+                      {d.name} ({d.type}) {d.isActive ? "• ACTIVE" : ""}
+                    </option>
+                  ))
+                )}
+              </select>
+            </div>
+            {onFetchDevices && (
+              <button
+                type="button"
+                className="ctrl-btn"
+                style={{ padding: "4px 8px", fontSize: "10px" }}
+                onClick={onFetchDevices}
+                disabled={loadingDevices}
+                title="Refresh available Spotify devices"
+              >
+                {loadingDevices ? "..." : "🔄 DEVICES"}
+              </button>
+            )}
           </div>
         )}
 
@@ -272,55 +331,85 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({
           </div>
         )}
 
-        {/* User Playlists Drawer */}
+        {/* Current Playing Song List / Queue */}
         {spotify.connected && (
           <div className="spotify-playlist-section">
             <div className="spotify-playlist-header">
-              <span className="mono-font" style={{ fontSize: "12px", fontWeight: "bold" }}>
-                USER PLAYLISTS ({playlists.length})
-              </span>
-              {onFetchPlaylists && (
+              <div style={{ display: "flex", alignItems: "center", gap: "8px", flexWrap: "wrap" }}>
+                <span className="mono-font" style={{ fontSize: "12px", fontWeight: "bold" }}>
+                  CURRENT PLAYING SONG LIST ({currentSongs.length})
+                </span>
+                {songListContext && (
+                  <span className="spotify-playlist-tag" style={{ fontSize: "10px" }}>
+                    ▶ {songListContext}
+                  </span>
+                )}
+              </div>
+              {onFetchSongList && (
                 <button
                   type="button"
                   className="ctrl-btn"
-                  onClick={onFetchPlaylists}
-                  disabled={loadingPlaylists}
+                  onClick={onFetchSongList}
+                  disabled={loadingSongList}
                 >
-                  {loadingPlaylists ? "FETCHING..." : playlists.length ? "REFRESH LIST" : "GET PLAYLIST LIST"}
+                  {loadingSongList
+                    ? "FETCHING..."
+                    : currentSongs.length
+                    ? "REFRESH QUEUE"
+                    : "LOAD SONG LIST"}
                 </button>
               )}
             </div>
 
-            {playlists.length > 0 && (
-              <div className="spotify-playlist-list">
-                {playlists.map((pl) => (
-                  <div key={pl.id} className="spotify-playlist-card">
-                    {pl.image ? (
-                      <img src={pl.image} alt={pl.name} className="spotify-playlist-cover" />
+            {currentSongs.length > 0 ? (
+              <div className="spotify-song-list">
+                {currentSongs.map((s, idx) => (
+                  <div
+                    key={`${s.id}-${idx}`}
+                    className={`spotify-song-card ${s.isPlaying ? "is-playing" : ""}`}
+                  >
+                    <span className="spotify-song-index">#{idx + 1}</span>
+                    {s.albumArt ? (
+                      <img src={s.albumArt} alt={s.name} className="spotify-song-cover" />
                     ) : (
-                      <div className="spotify-playlist-cover">NO ART</div>
+                      <div className="spotify-song-cover">NO ART</div>
                     )}
-                    <div className="spotify-playlist-meta">
-                      <span className="spotify-playlist-title" title={pl.name}>
-                        {pl.name}
-                      </span>
-                      <span className="spotify-playlist-count">
-                        {pl.totalTracks} TRACKS {pl.isPublic ? "• PUBLIC" : "• PRIVATE"}
+                    <div className="spotify-song-meta">
+                      <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
+                        <span className="spotify-song-title" title={s.name}>
+                          {s.name}
+                        </span>
+                        {s.isPlaying && (
+                          <span className="spotify-now-playing-chip">▶ NOW PLAYING</span>
+                        )}
+                      </div>
+                      <span className="spotify-song-artist">
+                        {s.artist} {s.album ? `• ${s.album}` : ""}
                       </span>
                     </div>
-                    {onPlayPlaylist && (
+                    <span className="spotify-song-duration">{formatMs(s.durationMs)}</span>
+                    {onPlayTrack && (
                       <button
                         type="button"
                         className="ctrl-btn"
-                        style={{ padding: "4px 8px", fontSize: "10px" }}
-                        onClick={() => onPlayPlaylist(pl.uri)}
-                        title={`Play ${pl.name}`}
+                        style={{
+                          padding: "3px 8px",
+                          fontSize: "10px",
+                          backgroundColor: s.isPlaying ? "var(--status-success)" : undefined,
+                          color: s.isPlaying ? "var(--ctp-crust)" : undefined,
+                        }}
+                        onClick={() => onPlayTrack(s.uri)}
+                        title={`Play ${s.name}`}
                       >
-                        ▶ PLAY
+                        {s.isPlaying ? "▶ PLAYING" : "▶ PLAY"}
                       </button>
                     )}
                   </div>
                 ))}
+              </div>
+            ) : (
+              <div className="empty-state" style={{ padding: "12px" }}>
+                [ NO SONGS IN QUEUE // CLICK LOAD SONG LIST TO REFRESH ]
               </div>
             )}
           </div>

@@ -16,6 +16,7 @@ export function getSpotifyPublicState(): SpotifyInfo {
     hasClientSecret: Boolean(spotifyState.clientSecret),
     connected: spotifyState.connected,
     currentTrack: spotifyState.currentTrack,
+    activeDevice: spotifyState.activeDevice || null,
     error: spotifyState.error,
   };
 }
@@ -32,6 +33,7 @@ export const state: ServerState = {
     hasClientSecret: Boolean(initialConfig.spotifyClientSecret),
     connected: isSpotifyConfigured,
     currentTrack: null,
+    activeDevice: null,
     error: null,
   },
 };
@@ -44,6 +46,7 @@ export const spotifyState: SpotifyState = {
   tokenExpiresAt: 0,
   connected: isSpotifyConfigured,
   currentTrack: null,
+  activeDevice: null,
   error: null,
 };
 
