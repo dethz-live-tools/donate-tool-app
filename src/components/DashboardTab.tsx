@@ -9,6 +9,52 @@ import {
   TikTokChatMessage,
 } from "../types";
 
+export interface EdgeTtsVoice {
+  name: string;
+  shortName: string;
+  gender: string;
+  locale: string;
+  friendlyName: string;
+  suggested?: boolean;
+}
+
+const DEFAULT_EDGE_VOICE = "th-TH-NiwatNeural";
+
+const FALLBACK_EDGE_VOICES: EdgeTtsVoice[] = [
+  {
+    name: "Microsoft Niwat Online (Natural) - Thai (Thailand)",
+    shortName: "th-TH-NiwatNeural",
+    gender: "Male",
+    locale: "th-TH",
+    friendlyName: "Thai Male (Niwat - Natural)",
+    suggested: true,
+  },
+  {
+    name: "Microsoft Premwadee Online (Natural) - Thai (Thailand)",
+    shortName: "th-TH-PremwadeeNeural",
+    gender: "Female",
+    locale: "th-TH",
+    friendlyName: "Thai Female (Premwadee - Natural)",
+    suggested: true,
+  },
+  {
+    name: "Microsoft Aria Online (Natural) - English (United States)",
+    shortName: "en-US-AriaNeural",
+    gender: "Female",
+    locale: "en-US",
+    friendlyName: "English Female (Aria - Natural)",
+    suggested: false,
+  },
+  {
+    name: "Microsoft Guy Online (Natural) - English (United States)",
+    shortName: "en-US-GuyNeural",
+    gender: "Male",
+    locale: "en-US",
+    friendlyName: "English Male (Guy - Natural)",
+    suggested: false,
+  },
+];
+
 interface DashboardTabProps {
   username: string;
   webhookUri: string;
@@ -170,7 +216,7 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({
     }
   };
 
-  // TikTok Chat Reader & TTS state (persisted in localStorage)
+  // TikTok Chat Reader & Edge TTS state (persisted in localStorage)
   const [ttsEnabled, setTtsEnabled] = React.useState<boolean>(() => {
     try {
       return localStorage.getItem("donate_socket_tts_enabled") === "true";
@@ -180,9 +226,11 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({
   });
   const [ttsVoice, setTtsVoice] = React.useState<string>(() => {
     try {
-      return localStorage.getItem("donate_socket_tts_voice") || "";
+      const saved = localStorage.getItem("donate_socket_tts_voice");
+      if (saved && saved.includes("Neural")) return saved;
+      return DEFAULT_EDGE_VOICE;
     } catch {
-      return "";
+      return DEFAULT_EDGE_VOICE;
     }
   });
   const [ttsVolume, setTtsVolume] = React.useState<number>(() => {
@@ -224,52 +272,123 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({
     }
   });
   const [showTtsSettings, setShowTtsSettings] = React.useState<boolean>(false);
-  const [availableVoices, setAvailableVoices] = React.useState<SpeechSynthesisVoice[]>([]);
+  const [availableVoices, setAvailableVoices] = React.useState<EdgeTtsVoice[]>(FALLBACK_EDGE_VOICES);
 
-  // Load available system voices
+  // Load available Edge TTS voices from server
   React.useEffect(() => {
-    if (typeof window === "undefined" || !("speechSynthesis" in window)) return;
-
-    const loadVoices = () => {
-      const voices = window.speechSynthesis.getVoices();
-      if (voices && voices.length) {
-        setAvailableVoices(voices);
-        if (!ttsVoice && voices.length) {
-          // Default to first local voice or system default
-          const def = voices.find((v) => v.default) || voices[0];
-          setTtsVoice(def.name);
+    let active = true;
+    const fetchVoices = async () => {
+      try {
+        const res = await fetch("http://127.0.0.1:3001/api/tts/voices");
+        if (res.ok) {
+          const data = await res.json();
+          if (active && Array.isArray(data.voices) && data.voices.length > 0) {
+            setAvailableVoices(data.voices);
+          }
         }
+      } catch (err) {
+        console.warn("[TTS] Could not load Edge TTS voices from server, using fallback:", err);
       }
     };
-
-    loadVoices();
-    window.speechSynthesis.onvoiceschanged = loadVoices;
+    fetchVoices();
     return () => {
-      if (typeof window !== "undefined" && "speechSynthesis" in window) {
-        window.speechSynthesis.onvoiceschanged = null;
-      }
+      active = false;
     };
-  }, [ttsVoice]);
+  }, []);
+
+  // Sequential Audio Queue for Edge TTS
+  const audioQueueRef = React.useRef<string[]>([]);
+  const currentAudioRef = React.useRef<HTMLAudioElement | null>(null);
+  const isPlayingRef = React.useRef<boolean>(false);
+
+  const processAudioQueue = React.useCallback(() => {
+    if (isPlayingRef.current) return;
+    if (audioQueueRef.current.length === 0) return;
+
+    const nextText = audioQueueRef.current.shift();
+    if (!nextText) return;
+
+    isPlayingRef.current = true;
+    const voiceParam = ttsVoice || DEFAULT_EDGE_VOICE;
+    const url = `http://127.0.0.1:3001/api/tts/speak?text=${encodeURIComponent(
+      nextText
+    )}&voice=${encodeURIComponent(voiceParam)}&rate=${ttsRate}&pitch=${ttsPitch}`;
+
+    try {
+      const audio = new Audio(url);
+      audio.volume = Math.max(0, Math.min(1, ttsVolume));
+      currentAudioRef.current = audio;
+
+      const finishCurrent = () => {
+        isPlayingRef.current = false;
+        currentAudioRef.current = null;
+        processAudioQueue();
+      };
+
+      audio.onended = finishCurrent;
+      audio.onerror = () => {
+        // Fallback to Web Speech API if server audio fails
+        try {
+          if (typeof window !== "undefined" && "speechSynthesis" in window) {
+            const u = new SpeechSynthesisUtterance(nextText);
+            u.volume = Math.max(0, Math.min(1, ttsVolume));
+            u.rate = Math.max(0.1, Math.min(2, ttsRate));
+            u.onend = finishCurrent;
+            u.onerror = finishCurrent;
+            window.speechSynthesis.speak(u);
+            return;
+          }
+        } catch {}
+        finishCurrent();
+      };
+
+      audio.play().catch((err) => {
+        console.warn("[TTS] Audio playback error:", err);
+        // Fallback to Web Speech API on autoplay policy block
+        try {
+          if (typeof window !== "undefined" && "speechSynthesis" in window) {
+            const u = new SpeechSynthesisUtterance(nextText);
+            u.volume = Math.max(0, Math.min(1, ttsVolume));
+            u.rate = Math.max(0.1, Math.min(2, ttsRate));
+            u.onend = finishCurrent;
+            u.onerror = finishCurrent;
+            window.speechSynthesis.speak(u);
+            return;
+          }
+        } catch {}
+        finishCurrent();
+      });
+    } catch (e) {
+      console.error("[TTS] Failed to play audio:", e);
+      isPlayingRef.current = false;
+      currentAudioRef.current = null;
+      processAudioQueue();
+    }
+  }, [ttsVoice, ttsRate, ttsPitch, ttsVolume]);
 
   const speakMessage = React.useCallback(
     (text: string) => {
-      if (typeof window === "undefined" || !("speechSynthesis" in window)) return;
-      try {
-        const utterance = new SpeechSynthesisUtterance(text);
-        utterance.volume = Math.max(0, Math.min(1, ttsVolume));
-        utterance.rate = Math.max(0.1, Math.min(2, ttsRate));
-        utterance.pitch = Math.max(0, Math.min(2, ttsPitch));
-        if (ttsVoice && availableVoices.length) {
-          const found = availableVoices.find((v) => v.name === ttsVoice);
-          if (found) utterance.voice = found;
-        }
-        window.speechSynthesis.speak(utterance);
-      } catch (e) {
-        console.error("TTS speak error:", e);
-      }
+      if (!text || !text.trim()) return;
+      audioQueueRef.current.push(text);
+      processAudioQueue();
     },
-    [ttsVolume, ttsRate, ttsPitch, ttsVoice, availableVoices]
+    [processAudioQueue]
   );
+
+  const stopTtsSpeech = React.useCallback(() => {
+    audioQueueRef.current = [];
+    if (currentAudioRef.current) {
+      try {
+        currentAudioRef.current.pause();
+        currentAudioRef.current.currentTime = 0;
+      } catch {}
+      currentAudioRef.current = null;
+    }
+    isPlayingRef.current = false;
+    if (typeof window !== "undefined" && "speechSynthesis" in window) {
+      window.speechSynthesis.cancel();
+    }
+  }, []);
 
   // Auto-speak incoming TikTok chats in real time
   const lastSpokenChatIdRef = React.useRef<string | null>(null);
@@ -320,19 +439,12 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({
       localStorage.setItem("donate_socket_tts_enabled", String(next));
     } catch {}
     if (next) {
-      speakMessage("TikTok Chat Reader activated");
+      speakMessage("เปิดระบบอ่านข้อความเสียงภาษาไทยแล้วครับ");
     } else {
-      if (typeof window !== "undefined" && "speechSynthesis" in window) {
-        window.speechSynthesis.cancel();
-      }
+      stopTtsSpeech();
     }
   };
 
-  const stopTtsSpeech = () => {
-    if (typeof window !== "undefined" && "speechSynthesis" in window) {
-      window.speechSynthesis.cancel();
-    }
-  };
 
   const [payloadSpecTab, setPayloadSpecTab] = React.useState<"tiktok" | "spotify">("tiktok");
   const track = spotify.currentTrack;
@@ -1019,8 +1131,8 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({
                   type="button"
                   className="btn btn-secondary"
                   style={{ padding: "6px 12px", fontSize: "11px" }}
-                  onClick={() => speakMessage("Testing TikTok text to speech reader. Hello streamer!")}
-                  title="Test current TTS voice and speed settings"
+                  onClick={() => speakMessage("ทดสอบระบบอ่านข้อความเสียงภาษาไทย สวัสดีครับ")}
+                  title="Test current Edge TTS voice and speed settings"
                 >
                   🔊 TEST VOICE
                 </button>
@@ -1046,7 +1158,7 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({
                     type="button"
                     className="btn btn-secondary"
                     style={{ padding: "6px 12px", fontSize: "11px" }}
-                    onClick={() => onTestChat("Hello streamer! Testing chat reader and TTS.")}
+                    onClick={() => onTestChat("สวัสดีครับ สตรีมเมอร์ สู้ๆ นะครับ")}
                     title="Simulate a viewer message in TikTok chat"
                   >
                     + TEST CHAT
@@ -1071,7 +1183,7 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({
                 {/* Voice Selection */}
                 <div className="tts-setting-item">
                   <label className="tts-setting-label">
-                    <span>TTS VOICE</span>
+                    <span>EDGE TTS VOICE</span>
                     <span>{availableVoices.length} AVAILABLE</span>
                   </label>
                   <select
@@ -1086,11 +1198,12 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({
                     }}
                   >
                     {availableVoices.length === 0 ? (
-                      <option value="">Default System Voice</option>
+                      <option value="th-TH-NiwatNeural">Thai Male (Niwat - Natural)</option>
                     ) : (
                       availableVoices.map((v) => (
-                        <option key={v.name} value={v.name}>
-                          {v.name} ({v.lang}) {v.default ? "• DEFAULT" : ""}
+                        <option key={v.shortName} value={v.shortName}>
+                          {v.suggested ? "★ " : ""}
+                          {v.friendlyName} [{v.locale}]
                         </option>
                       ))
                     )}
