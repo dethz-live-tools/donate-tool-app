@@ -6,7 +6,7 @@
   "scripts": {
     "dev": "bun dev.ts",
     "dev:client": "vite",
-    "dev:server": "bun server/index.ts",
+    "dev:server": "bun --watch server/index.ts",
     "server": "bun server/index.ts",
     "build": "tsc && vite build",
     "preview": "vite preview",

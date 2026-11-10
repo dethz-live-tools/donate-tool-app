@@ -19,6 +19,8 @@ interface ConfigTabProps {
   onConnect: (e: React.FormEvent) => void;
   onDisconnect: () => void;
   onTestWebhook: () => void;
+  onTestSpotifyWebhook?: () => void;
+  testingSpotifyWebhook?: boolean;
   onSaveSpotifyConfig: (e: React.FormEvent) => void;
   onRefreshSpotify: () => void;
   onDisconnectSpotify: () => void;
@@ -42,6 +44,8 @@ export const ConfigTab: React.FC<ConfigTabProps> = ({
   onConnect,
   onDisconnect,
   onTestWebhook,
+  onTestSpotifyWebhook,
+  testingSpotifyWebhook = false,
   onSaveSpotifyConfig,
   onRefreshSpotify,
   onDisconnectSpotify,
@@ -240,6 +244,17 @@ export const ConfigTab: React.FC<ConfigTabProps> = ({
                 >
                   RECHECK STATUS
                 </button>
+                {onTestSpotifyWebhook && (
+                  <button
+                    type="button"
+                    className="btn btn-secondary"
+                    onClick={onTestSpotifyWebhook}
+                    disabled={testingSpotifyWebhook || !webhookUri.trim()}
+                    title="Send current Spotify playback status to webhook"
+                  >
+                    {testingSpotifyWebhook ? "SENDING..." : "TEST SPOTIFY WEBHOOK"}
+                  </button>
+                )}
                 <button
                   type="button"
                   className="btn btn-destructive"

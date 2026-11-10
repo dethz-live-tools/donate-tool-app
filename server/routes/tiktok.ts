@@ -1,5 +1,6 @@
 import type http from "node:http";
 import { saveConfig } from "../config.ts";
+import { resetSpotifyWebhookTracker } from "../services/spotify.ts";
 import { connectLive, disconnectLive } from "../services/tiktok.ts";
 import { sendWebhook } from "../services/webhook.ts";
 import { state } from "../state.ts";
@@ -36,6 +37,7 @@ export async function handleTiktokRoutes(
       if (parsed.webhookUri) {
         state.webhookUri = String(parsed.webhookUri || "").trim();
         saveConfig({ webhookUri: state.webhookUri });
+        resetSpotifyWebhookTracker();
       }
       const payload: WebhookPayload = {
         username: String(parsed.username || "gifter_name"),

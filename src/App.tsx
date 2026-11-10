@@ -34,6 +34,7 @@ export default function App() {
   const [logs, setLogs] = useState<LogEntry[]>([]);
   const [loading, setLoading] = useState(false);
   const [testing, setTesting] = useState(false);
+  const [testingSpotifyWebhook, setTestingSpotifyWebhook] = useState(false);
   const [testResult, setTestResult] = useState<string | null>(null);
 
   // Spotify state
@@ -255,6 +256,42 @@ export default function App() {
     }
   }
 
+  async function handleTestSpotifyWebhook() {
+    if (!webhookUri.trim()) {
+      setErrorMsg("Please enter a Webhook URI in Settings first");
+      setCurrentPage("config");
+      return;
+    }
+
+    setTestingSpotifyWebhook(true);
+    setTestResult(null);
+    setErrorMsg(null);
+
+    try {
+      const res = await fetch(`${API_BASE}/api/spotify/test-webhook`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          webhookUri: webhookUri.trim(),
+        }),
+      });
+      const data = await res.json();
+      if (data.success) {
+        setTestResult(
+          `Spotify webhook delivered successfully (Status ${data.entry?.httpStatus || 200})`
+        );
+      } else {
+        setErrorMsg(
+          `Spotify webhook dispatch failed: ${data.entry?.error || data.error || "Unknown error"}`
+        );
+      }
+    } catch (err: any) {
+      setErrorMsg(`Could not trigger Spotify test webhook: ${err.message}`);
+    } finally {
+      setTestingSpotifyWebhook(false);
+    }
+  }
+
   async function handleSaveSpotifyConfig(e: React.FormEvent) {
     e.preventDefault();
     if (!spotifyClientId.trim()) {
@@ -451,6 +488,8 @@ export default function App() {
             onConnect={() => handleConnect()}
             onDisconnect={handleDisconnect}
             onTestWebhook={handleTestWebhook}
+            onTestSpotifyWebhook={handleTestSpotifyWebhook}
+            testingSpotifyWebhook={testingSpotifyWebhook}
             onClearLogs={() => setLogs([])}
             onRefreshSpotify={handleRefreshSpotify}
             onPlayerControl={handlePlayerControl}
@@ -479,6 +518,8 @@ export default function App() {
             onConnect={handleConnect}
             onDisconnect={handleDisconnect}
             onTestWebhook={handleTestWebhook}
+            onTestSpotifyWebhook={handleTestSpotifyWebhook}
+            testingSpotifyWebhook={testingSpotifyWebhook}
             onSaveSpotifyConfig={handleSaveSpotifyConfig}
             onRefreshSpotify={handleRefreshSpotify}
             onDisconnectSpotify={handleDisconnectSpotify}

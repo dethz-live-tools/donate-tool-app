@@ -22,6 +22,8 @@ interface DashboardTabProps {
   onConnect: () => void;
   onDisconnect: () => void;
   onTestWebhook: () => void;
+  onTestSpotifyWebhook?: () => void;
+  testingSpotifyWebhook?: boolean;
   onClearLogs: () => void;
   onRefreshSpotify: () => void;
   onPlayerControl: (action: "play" | "pause" | "next" | "previous") => void;
@@ -56,6 +58,8 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({
   onConnect,
   onDisconnect,
   onTestWebhook,
+  onTestSpotifyWebhook,
+  testingSpotifyWebhook = false,
   onClearLogs,
   onRefreshSpotify,
   onPlayerControl,
@@ -65,6 +69,7 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({
   onSelectDevice,
   onGoToConfig,
 }) => {
+  const [payloadSpecTab, setPayloadSpecTab] = React.useState<"tiktok" | "spotify">("tiktok");
   const track = spotify.currentTrack;
   const progressPercent =
     track && track.durationMs > 0
@@ -298,6 +303,18 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({
                 >
                   NEXT ▶|
                 </button>
+                {onTestSpotifyWebhook && (
+                  <button
+                    type="button"
+                    className="ctrl-btn"
+                    onClick={onTestSpotifyWebhook}
+                    disabled={testingSpotifyWebhook || !webhookUri.trim()}
+                    title="Send current Spotify playback status to webhook"
+                    style={{ marginLeft: "auto", fontSize: "11px" }}
+                  >
+                    {testingSpotifyWebhook ? "DISPATCHING..." : "📡 WEBHOOK TEST"}
+                  </button>
+                )}
               </div>
             </div>
           </div>
@@ -306,6 +323,19 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({
             [ SPOTIFY CONNECTED // NO ACTIVE PLAYBACK ]
             <br />
             Play music on Spotify desktop, web, or mobile app to view live track data.
+            {onTestSpotifyWebhook && webhookUri.trim() && (
+              <div style={{ marginTop: "12px" }}>
+                <button
+                  type="button"
+                  className="btn btn-secondary"
+                  style={{ padding: "4px 12px", fontSize: "11px" }}
+                  onClick={onTestSpotifyWebhook}
+                  disabled={testingSpotifyWebhook}
+                >
+                  {testingSpotifyWebhook ? "SENDING..." : "📡 TEST SPOTIFY WEBHOOK"}
+                </button>
+              </div>
+            )}
           </div>
         ) : (
           <div className="empty-state">
@@ -420,20 +450,71 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({
       <section className="raw-card">
         <div className="card-title">
           <h3>DISPATCH PAYLOAD SPECIFICATION</h3>
-          <span className="mono-font" style={{ fontSize: "12px", color: "var(--ctp-lavender)" }}>
-            APPLICATION/JSON
-          </span>
+          <div style={{ display: "flex", gap: "6px" }}>
+            <button
+              type="button"
+              className={`btn ${payloadSpecTab === "tiktok" ? "btn-primary" : "btn-secondary"}`}
+              style={{ padding: "2px 8px", fontSize: "11px" }}
+              onClick={() => setPayloadSpecTab("tiktok")}
+            >
+              TIKTOK GIFT
+            </button>
+            <button
+              type="button"
+              className={`btn ${payloadSpecTab === "spotify" ? "btn-primary" : "btn-secondary"}`}
+              style={{ padding: "2px 8px", fontSize: "11px" }}
+              onClick={() => setPayloadSpecTab("spotify")}
+            >
+              SPOTIFY STATUS
+            </button>
+          </div>
         </div>
         <pre className="code-preview">
-{JSON.stringify(
-  {
-    username: "gifter_name",
-    giftName: "Rose",
-    coins: 20,
-  },
-  null,
-  2
-)}
+{payloadSpecTab === "tiktok"
+  ? JSON.stringify(
+      {
+        username: "gifter_name",
+        giftName: "Rose",
+        coins: 20,
+      },
+      null,
+      2
+    )
+  : JSON.stringify(
+      {
+        event: "spotify_status",
+        isPlaying: true,
+        trackName: "Starboy",
+        artist: "The Weeknd, Daft Punk",
+        album: "Starboy",
+        albumArt: "https://i.scdn.co/image/...",
+        durationMs: 230453,
+        progressMs: 51230,
+        playlistName: "Top Hits",
+        playlistUri: "spotify:playlist:...",
+        track: {
+          name: "Starboy",
+          artist: "The Weeknd, Daft Punk",
+          album: "Starboy",
+          albumArt: "https://i.scdn.co/image/...",
+          durationMs: 230453,
+          progressMs: 51230,
+          isPlaying: true,
+          playlistName: "Top Hits",
+          playlistUri: "spotify:playlist:...",
+        },
+        device: {
+          id: "device_abc123",
+          name: "Web Player (Chrome)",
+          type: "Computer",
+          isActive: true,
+          volumePercent: 100,
+        },
+        timestamp: 1715000000000,
+      },
+      null,
+      2
+    )}
         </pre>
       </section>
 
@@ -455,7 +536,7 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({
           <div className="empty-state">
             [ NO DISPATCHES RECORDED YET ]
             <br />
-            Connect to a stream or click &quot;TEST WEBHOOK&quot; to test.
+            Connect to a stream, play Spotify songs, or click &quot;TEST WEBHOOK&quot; to test.
           </div>
         ) : (
           <div className="logs-list">
@@ -469,7 +550,12 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({
                     <span
                       className="log-type-tag"
                       style={{
-                        color: log.type === "test" ? "var(--ctp-lavender)" : "var(--ctp-mauve)",
+                        color:
+                          log.type === "test"
+                            ? "var(--ctp-lavender)"
+                            : log.type === "spotify"
+                            ? "var(--ctp-green)"
+                            : "var(--ctp-mauve)",
                         marginRight: "8px",
                       }}
                     >

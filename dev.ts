@@ -52,9 +52,9 @@ async function start() {
   const alreadyRunning = await isServerRunning();
 
   if (!alreadyRunning) {
-    console.log("\x1b[36m[dev] Starting backend server (server/index.ts)...\x1b[0m");
+    console.log("\x1b[36m[dev] Starting backend server (bun --watch server/index.ts)...\x1b[0m");
     try {
-      serverProc = spawn(bunBin, [serverFile], {
+      serverProc = spawn(bunBin, ["--watch", serverFile], {
         cwd: rootDir,
         stdio: "inherit",
         env: process.env,

@@ -6,16 +6,34 @@ export interface AppConfig {
   spotifyRefreshToken: string;
 }
 
-export interface WebhookPayload {
+export interface TikTokGiftPayload {
   username: string;
   giftName: string;
   coins: number;
 }
 
+export interface SpotifyWebhookPayload {
+  event: "spotify_status";
+  isPlaying: boolean;
+  trackName: string | null;
+  artist: string | null;
+  album: string | null;
+  albumArt: string | null;
+  durationMs: number;
+  progressMs: number;
+  playlistName?: string | null;
+  playlistUri?: string | null;
+  track: SpotifyTrack | null;
+  device?: SpotifyDevice | null;
+  timestamp: number;
+}
+
+export type WebhookPayload = TikTokGiftPayload | SpotifyWebhookPayload | Record<string, any>;
+
 export interface LogEntry {
   id: string;
   timestamp: string;
-  type: "gift" | "test" | "system";
+  type: "gift" | "test" | "system" | "spotify";
   payload: WebhookPayload;
   webhookUri: string;
   httpStatus?: number;

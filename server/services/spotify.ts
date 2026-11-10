@@ -1,15 +1,88 @@
 import { saveConfig } from "../config.ts";
-import { broadcastState, spotifyState } from "../state.ts";
+import { broadcastState, spotifyState, state } from "../state.ts";
+import { sendWebhook } from "./webhook.ts";
 import type {
   CurrentSongItem,
   CurrentSongListResponse,
+  LogEntry,
   SpotifyDevice,
   SpotifyPlaylist,
   SpotifyTrack,
+  SpotifyWebhookPayload,
 } from "../types.ts";
 
 const playlistCache = new Map<string, string>();
 let spotifyPollTimer: NodeJS.Timeout | null = null;
+
+let lastDispatchedTrackKey: string | null = null;
+let lastDispatchedIsPlaying: boolean | null = null;
+let hasDispatchedInitial: boolean = false;
+
+export function resetSpotifyWebhookTracker() {
+  lastDispatchedTrackKey = null;
+  lastDispatchedIsPlaying = null;
+  hasDispatchedInitial = false;
+}
+
+export async function sendSpotifyStatusWebhook(force: boolean = false): Promise<LogEntry | null> {
+  const uri = String(state.webhookUri || "").trim();
+  if (!uri && !force) {
+    return null;
+  }
+
+  const track = spotifyState.currentTrack;
+  const isPlaying = track ? Boolean(track.isPlaying) : false;
+
+  const payload: SpotifyWebhookPayload = {
+    event: "spotify_status",
+    isPlaying,
+    trackName: track ? track.name : null,
+    artist: track ? track.artist : null,
+    album: track ? track.album : null,
+    albumArt: track ? track.albumArt : null,
+    durationMs: track ? track.durationMs : 0,
+    progressMs: track ? track.progressMs : 0,
+    playlistName: track?.playlistName || null,
+    playlistUri: track?.playlistUri || null,
+    track: track ? { ...track } : null,
+    device: spotifyState.activeDevice ? { ...spotifyState.activeDevice } : null,
+    timestamp: Date.now(),
+  };
+
+  return await sendWebhook(payload, "spotify");
+}
+
+export async function checkAndDispatchSpotifyWebhook() {
+  const uri = String(state.webhookUri || "").trim();
+  if (!uri) return;
+
+  if (!spotifyState.connected && !spotifyState.refreshToken) return;
+
+  const track = spotifyState.currentTrack;
+  const currentTrackKey = track
+    ? `${track.name}:::${track.artist}:::${track.album}:::${track.playlistUri || ""}`
+    : null;
+  const currentIsPlaying = track ? Boolean(track.isPlaying) : false;
+
+  if (!hasDispatchedInitial) {
+    hasDispatchedInitial = true;
+    lastDispatchedTrackKey = currentTrackKey;
+    lastDispatchedIsPlaying = currentIsPlaying;
+    if (track) {
+      await sendSpotifyStatusWebhook();
+    }
+    return;
+  }
+
+  const trackChanged = currentTrackKey !== lastDispatchedTrackKey;
+  const playStateChanged = currentIsPlaying !== lastDispatchedIsPlaying;
+
+  if (trackChanged || playStateChanged) {
+    lastDispatchedTrackKey = currentTrackKey;
+    lastDispatchedIsPlaying = currentIsPlaying;
+    await sendSpotifyStatusWebhook();
+  }
+}
 
 // Spotify token refresh logic
 export async function refreshSpotifyToken(): Promise<boolean> {
@@ -404,6 +477,7 @@ export async function fetchCurrentlyPlaying() {
       if (spotifyState.currentTrack !== null) {
         spotifyState.currentTrack = null;
         broadcastState();
+        await checkAndDispatchSpotifyWebhook();
       }
       return;
     }
@@ -428,6 +502,7 @@ export async function fetchCurrentlyPlaying() {
       if (spotifyState.currentTrack !== null) {
         spotifyState.currentTrack = null;
         broadcastState();
+        await checkAndDispatchSpotifyWebhook();
       }
       return;
     }
@@ -477,6 +552,7 @@ export async function fetchCurrentlyPlaying() {
     spotifyState.currentTrack = track;
     spotifyState.error = null;
     broadcastState();
+    await checkAndDispatchSpotifyWebhook();
   } catch (err: any) {
     console.error("[spotify] Fetch error:", err.message);
     spotifyState.error = `Network error: ${err.message}`;

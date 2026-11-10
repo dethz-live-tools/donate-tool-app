@@ -1,5 +1,6 @@
 import type http from "node:http";
 import { saveConfig } from "../config.ts";
+import { resetSpotifyWebhookTracker } from "../services/spotify.ts";
 import { broadcastState, getSpotifyPublicState, sseClients, state } from "../state.ts";
 import { parseJsonBody, sendJson } from "../utils.ts";
 
@@ -52,7 +53,10 @@ export async function handleStatusRoutes(
     try {
       const parsed = await parseJsonBody(req);
       if (parsed.username !== undefined) state.username = String(parsed.username || "").trim();
-      if (parsed.webhookUri !== undefined) state.webhookUri = String(parsed.webhookUri || "").trim();
+      if (parsed.webhookUri !== undefined) {
+        state.webhookUri = String(parsed.webhookUri || "").trim();
+        resetSpotifyWebhookTracker();
+      }
       saveConfig({
         username: state.username,
         webhookUri: state.webhookUri,

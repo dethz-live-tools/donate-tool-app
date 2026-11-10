@@ -6,11 +6,13 @@ import {
   getAvailableDevices,
   getCurrentSongList,
   getUserPlaylists,
+  resetSpotifyWebhookTracker,
+  sendSpotifyStatusWebhook,
   startSpotifyPolling,
   stopSpotifyPolling,
   transferPlayback,
 } from "../services/spotify.ts";
-import { broadcastState, getSpotifyPublicState, spotifyState } from "../state.ts";
+import { broadcastState, getSpotifyPublicState, spotifyState, state } from "../state.ts";
 import { parseJsonBody, PORT, sendJson } from "../utils.ts";
 
 export async function handleSpotifyRoutes(
@@ -190,9 +192,34 @@ export async function handleSpotifyRoutes(
     spotifyState.refreshToken = null;
     spotifyState.currentTrack = null;
     spotifyState.error = null;
+    resetSpotifyWebhookTracker();
     saveConfig({ spotifyRefreshToken: "" });
     broadcastState();
     sendJson(res, 200, { success: true, message: "Spotify disconnected" });
+    return true;
+  }
+
+  // Test Spotify webhook dispatch
+  if (url.pathname === "/api/spotify/test-webhook" && req.method === "POST") {
+    try {
+      let parsed: any = {};
+      try {
+        parsed = await parseJsonBody(req);
+      } catch {}
+
+      if (parsed?.webhookUri) {
+        state.webhookUri = String(parsed.webhookUri || "").trim();
+        saveConfig({ webhookUri: state.webhookUri });
+      }
+
+      const entry = await sendSpotifyStatusWebhook(true);
+      sendJson(res, 200, {
+        success: Boolean(entry?.success),
+        entry,
+      });
+    } catch (err: any) {
+      sendJson(res, 200, { success: false, error: err.message });
+    }
     return true;
   }
 
