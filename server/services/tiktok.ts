@@ -1,12 +1,34 @@
-// @ts-expect-error type declarations missing in legacy bundle
-import { WebcastPushConnection } from "tiktok-live-connector/legacy";
+import {
+  ControlEvent,
+  RouteConfig,
+  TikTokLiveConnection,
+  WebcastEvent,
+} from "tiktok-live-connector";
 import { saveConfig } from "../config.ts";
 import { broadcastChat, broadcastState, spotifyState, state } from "../state.ts";
 import type { TikTokChatMessage, TikTokGiftPayload } from "../types.ts";
 import { requestSong } from "./spotify.ts";
 import { sendWebhook } from "./webhook.ts";
 
-let activeConnection: any = null;
+// Safely intercept signature provider to prevent unhandled Euler Stream paywall errors
+try {
+  const origSignature = RouteConfig.fetchWebcastSignatureFromProvider;
+  RouteConfig.fetchWebcastSignatureFromProvider = async (args: any) => {
+    try {
+      return await origSignature(args);
+    } catch (err: any) {
+      if (err?.message?.includes("Business plan") || err?.message?.includes("Euler")) {
+        console.warn("[tiktok] Euler Stream sign server paywall bypassed");
+        return { response: { signedUrl: args.url, userAgent: args.userAgent } } as any;
+      }
+      throw err;
+    }
+  };
+} catch (e) {
+  console.warn("[tiktok] RouteConfig signature patch skipped:", e);
+}
+
+let activeConnection: TikTokLiveConnection | null = null;
 
 interface ActiveStreak {
   timer: NodeJS.Timeout;
@@ -60,22 +82,22 @@ export async function connectLive(username?: string, webhookUri?: string) {
   broadcastState();
 
   try {
-    const conn = new WebcastPushConnection(state.username, {
+    const conn = new TikTokLiveConnection(state.username, {
       processInitialData: false,
       fetchRoomInfoOnConnect: true,
-      enableExtendedGiftInfo: true,
+      enableExtendedGiftInfo: false,
     });
     activeConnection = conn;
 
-    conn.on("connected", (connState: any) => {
+    conn.on(ControlEvent.CONNECTED, (connState: any) => {
       if (activeConnection !== conn) return;
       state.status = "connected";
-      state.roomId = connState?.roomId ? String(connState.roomId) : "live";
+      state.roomId = conn.roomId ? String(conn.roomId) : (connState?.roomId ? String(connState.roomId) : "live");
       state.error = null;
       broadcastState();
     });
 
-    conn.on("disconnected", () => {
+    conn.on(ControlEvent.DISCONNECTED, () => {
       if (activeConnection !== conn) return;
       clearAllStreaks();
       state.status = "disconnected";
@@ -83,7 +105,7 @@ export async function connectLive(username?: string, webhookUri?: string) {
       broadcastState();
     });
 
-    conn.on("streamEnd", () => {
+    conn.on(ControlEvent.STREAM_END, () => {
       if (activeConnection !== conn) return;
       clearAllStreaks();
       state.status = "disconnected";
@@ -92,27 +114,56 @@ export async function connectLive(username?: string, webhookUri?: string) {
       broadcastState();
     });
 
-    conn.on("error", (err: any) => {
+    conn.on(ControlEvent.ERROR, (err: any) => {
       if (activeConnection !== conn) return;
-      state.status = "error";
-      state.error = err?.message || String(err);
+      const msg = err?.message || String(err);
+      if (msg.includes("offline") || err?.name === "UserOfflineError") {
+        state.status = "disconnected";
+        state.error = `@${state.username} is currently offline`;
+      } else {
+        state.status = "error";
+        state.error = msg;
+      }
       broadcastState();
     });
 
-    conn.on("chat", (data: any) => {
+    conn.on(WebcastEvent.CHAT, (data: any) => {
       if (activeConnection !== conn) return;
 
-      const gifter = data.uniqueId || data.nickname || data.user?.uniqueId || data.user?.nickname || "viewer";
-      const nickname = data.nickname || data.user?.nickname || gifter;
-      const comment = String(data.comment || "").trim();
+      const uniqueId =
+        data.user?.displayId ||
+        data.user?.uniqueId ||
+        data.displayId ||
+        data.uniqueId ||
+        data.user?.nickname ||
+        data.nickname ||
+        "viewer";
+
+      const nickname =
+        data.user?.nickname ||
+        data.nickname ||
+        uniqueId;
+
+      const comment = String(
+        data.content ||
+        data.comment ||
+        data.text ||
+        ""
+      ).trim();
+
+      const profilePictureUrl =
+        data.user?.avatarThumb?.urlList?.[0] ||
+        data.user?.avatarLarge?.urlList?.[0] ||
+        data.profilePictureUrl ||
+        null;
 
       const chatPayload: TikTokChatMessage = {
         id: data.msgId ? String(data.msgId) : Math.random().toString(36).slice(2, 9),
-        userId: data.userId || data.user?.userId || "",
-        uniqueId: gifter,
+        userId: data.user?.id ? String(data.user.id) : (data.userId || ""),
+        uniqueId,
         nickname,
         comment,
-        profilePictureUrl: data.profilePictureUrl || data.user?.profilePictureUrl || null,
+        profilePictureUrl,
         timestamp: Date.now(),
       };
 
@@ -131,21 +182,35 @@ export async function connectLive(username?: string, webhookUri?: string) {
       if (matchedPrefix && spotifyState.connected) {
         const query = comment.slice(matchedPrefix.length).trim();
         if (query) {
-          requestSong(query, gifter, "tiktok_chat").catch((err) => {
+          requestSong(query, uniqueId, "tiktok_chat").catch((err) => {
             console.error("[tiktok-chat] Auto song request error:", err);
           });
         }
       }
     });
 
-    conn.on("gift", (data: any) => {
+    conn.on(WebcastEvent.GIFT, (data: any) => {
       if (activeConnection !== conn) return;
 
-      const gifter = data.uniqueId || data.nickname || data.user?.uniqueId || data.user?.nickname || "gifter_name";
-      const nickname = data.nickname || data.user?.nickname || gifter;
+      const uniqueId =
+        data.user?.displayId ||
+        data.user?.uniqueId ||
+        data.displayId ||
+        data.uniqueId ||
+        data.user?.nickname ||
+        data.nickname ||
+        "gifter";
+
+      const nickname =
+        data.user?.nickname ||
+        data.nickname ||
+        uniqueId;
+
       const rawDescribe = typeof data.describe === "string" ? data.describe.trim() : "";
       const cleanDescribe = rawDescribe && !rawDescribe.includes("%s") && !rawDescribe.toLowerCase().includes("sent") ? rawDescribe : "";
+
       const giftName =
+        data.giftDetails?.giftName ||
         data.giftName ||
         data.extendedGiftInfo?.name ||
         data.gift?.name ||
@@ -153,6 +218,7 @@ export async function connectLive(username?: string, webhookUri?: string) {
         "Gift";
 
       const diamondCount = Number(
+        data.giftDetails?.diamondCount ??
         data.diamondCount ??
         data.diamond_count ??
         data.extendedGiftInfo?.diamond_count ??
@@ -168,26 +234,49 @@ export async function connectLive(username?: string, webhookUri?: string) {
       ) || 1;
 
       const coins = diamondCount * repeatCount;
-      const giftType = Number(data.giftType ?? data.gift?.gift_type ?? data.gift_type ?? 0);
-      const isRepeatEnd = Boolean(data.repeatEnd || data.repeat_end === 1 || data.gift?.repeat_end === 1);
+      const giftType = Number(
+        data.giftDetails?.giftType ??
+        data.giftType ??
+        data.gift?.gift_type ??
+        data.gift_type ??
+        0
+      );
+      const isRepeatEnd = Boolean(
+        data.repeatEnd ||
+        data.repeat_end === 1 ||
+        data.gift?.repeat_end === 1
+      );
+
+      const giftPictureUrl =
+        data.giftPictureUrl ||
+        data.giftDetails?.giftImage?.urlList?.[0] ||
+        data.extendedGiftInfo?.image?.url_list?.[0] ||
+        data.gift?.image?.urlList?.[0] ||
+        null;
+
+      const profilePictureUrl =
+        data.user?.avatarThumb?.urlList?.[0] ||
+        data.user?.avatarLarge?.urlList?.[0] ||
+        data.profilePictureUrl ||
+        null;
 
       const payload: TikTokGiftPayload = {
-        username: gifter,
+        username: uniqueId,
         nickname,
         giftName,
         coins,
         diamondCount,
         repeatCount,
         giftId: data.giftId || data.gift?.gift_id,
-        giftPictureUrl: data.giftPictureUrl || data.extendedGiftInfo?.image?.url_list?.[0] || data.gift?.image?.urlList?.[0],
-        profilePictureUrl: data.profilePictureUrl || data.user?.profilePictureUrl,
-        userId: data.userId || data.user?.userId,
+        giftPictureUrl,
+        profilePictureUrl,
+        userId: data.user?.id ? String(data.user.id) : (data.userId || data.user?.userId),
         timestamp: Date.now(),
       };
 
       // Handle combo / streak gifts (giftType === 1)
       if (giftType === 1) {
-        const streakKey = `${data.userId || data.uniqueId || gifter}_${data.giftId || giftName}`;
+        const streakKey = `${payload.userId || uniqueId}_${data.giftId || giftName}`;
 
         if (isRepeatEnd) {
           // Streak completed
@@ -228,8 +317,14 @@ export async function connectLive(username?: string, webhookUri?: string) {
     await conn.connect();
   } catch (err: any) {
     clearAllStreaks();
-    state.status = "error";
-    state.error = err?.message || "Failed to connect to TikTok LIVE";
+    const msg = err?.message || "Failed to connect to TikTok LIVE";
+    if (msg.includes("offline") || err?.name === "UserOfflineError") {
+      state.status = "disconnected";
+      state.error = `@${state.username} is currently offline`;
+    } else {
+      state.status = "error";
+      state.error = msg;
+    }
     activeConnection = null;
     broadcastState();
   }
