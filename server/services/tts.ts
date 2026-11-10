@@ -20,6 +20,90 @@ export interface SynthesizeOptions {
 const DEFAULT_VOICE = "th-TH-NiwatNeural";
 const SECONDARY_THAI_VOICE = "th-TH-PremwadeeNeural";
 
+// Verified curated Edge TTS voices list (instant 0ms response)
+const CURATED_VOICES: TtsVoice[] = [
+  {
+    name: "Microsoft Niwat Online (Natural) - Thai (Thailand)",
+    shortName: "th-TH-NiwatNeural",
+    gender: "Male",
+    locale: "th-TH",
+    friendlyName: "Thai Male (Niwat - Natural)",
+    suggested: true,
+  },
+  {
+    name: "Microsoft Premwadee Online (Natural) - Thai (Thailand)",
+    shortName: "th-TH-PremwadeeNeural",
+    gender: "Female",
+    locale: "th-TH",
+    friendlyName: "Thai Female (Premwadee - Natural)",
+    suggested: true,
+  },
+  {
+    name: "Microsoft Aria Online (Natural) - English (United States)",
+    shortName: "en-US-AriaNeural",
+    gender: "Female",
+    locale: "en-US",
+    friendlyName: "English Female (Aria - Natural)",
+    suggested: false,
+  },
+  {
+    name: "Microsoft Guy Online (Natural) - English (United States)",
+    shortName: "en-US-GuyNeural",
+    gender: "Male",
+    locale: "en-US",
+    friendlyName: "English Male (Guy - Natural)",
+    suggested: false,
+  },
+  {
+    name: "Microsoft Jenny Online (Natural) - English (United States)",
+    shortName: "en-US-JennyNeural",
+    gender: "Female",
+    locale: "en-US",
+    friendlyName: "English Female (Jenny - Natural)",
+    suggested: false,
+  },
+  {
+    name: "Microsoft Christopher Online (Natural) - English (United States)",
+    shortName: "en-US-ChristopherNeural",
+    gender: "Male",
+    locale: "en-US",
+    friendlyName: "English Male (Christopher - Natural)",
+    suggested: false,
+  },
+  {
+    name: "Microsoft Sonia Online (Natural) - English (United Kingdom)",
+    shortName: "en-GB-SoniaNeural",
+    gender: "Female",
+    locale: "en-GB",
+    friendlyName: "English UK Female (Sonia - Natural)",
+    suggested: false,
+  },
+  {
+    name: "Microsoft Ryan Online (Natural) - English (United Kingdom)",
+    shortName: "en-GB-RyanNeural",
+    gender: "Male",
+    locale: "en-GB",
+    friendlyName: "English UK Male (Ryan - Natural)",
+    suggested: false,
+  },
+  {
+    name: "Microsoft Natasha Online (Natural) - English (Australia)",
+    shortName: "en-AU-NatashaNeural",
+    gender: "Female",
+    locale: "en-AU",
+    friendlyName: "English AU Female (Natasha - Natural)",
+    suggested: false,
+  },
+  {
+    name: "Microsoft WilliamMultilingual Online (Natural) - English (Australia)",
+    shortName: "en-AU-WilliamMultilingualNeural",
+    gender: "Male",
+    locale: "en-AU",
+    friendlyName: "English AU Male (William Multilingual)",
+    suggested: false,
+  },
+];
+
 // LRU audio cache to avoid re-synthesizing repeated phrases
 const AUDIO_CACHE = new Map<string, Buffer>();
 const MAX_CACHE_SIZE = 200;
@@ -82,123 +166,81 @@ function formatPitch(pitch?: number | string): string {
 
 function buildSSML(text: string, voice: string, rate: string, pitch: string): string {
   const cleaned = escapeXml(cleanText(text));
-  return `<speak version="1.0" xmlns="http://www.w3.org/2001/10/synthesis" xml:lang="en-US">` +
+  const lang = voice.toLowerCase().startsWith("th") ? "th-TH" : "en-US";
+  return `<speak version="1.0" xmlns="http://www.w3.org/2001/10/synthesis" xml:lang="${lang}">` +
     `<voice name="${voice}">` +
     `<prosody pitch="${pitch}" rate="${rate}" volume="+0%">` +
     cleaned +
     `</prosody></voice></speak>`;
 }
 
-let cachedVoicesList: TtsVoice[] | null = null;
+let cachedVoicesList: TtsVoice[] = [...CURATED_VOICES];
 
 export async function getTtsVoices(): Promise<TtsVoice[]> {
-  if (cachedVoicesList && cachedVoicesList.length > 0) {
-    return cachedVoicesList;
-  }
-
-  const priorityVoices: TtsVoice[] = [
-    {
-      name: "Microsoft Niwat Online (Natural) - Thai (Thailand)",
-      shortName: "th-TH-NiwatNeural",
-      gender: "Male",
-      locale: "th-TH",
-      friendlyName: "Thai Male (Niwat - Natural)",
-      suggested: true,
-    },
-    {
-      name: "Microsoft Premwadee Online (Natural) - Thai (Thailand)",
-      shortName: "th-TH-PremwadeeNeural",
-      gender: "Female",
-      locale: "th-TH",
-      friendlyName: "Thai Female (Premwadee - Natural)",
-      suggested: true,
-    },
-    {
-      name: "Microsoft Aria Online (Natural) - English (United States)",
-      shortName: "en-US-AriaNeural",
-      gender: "Female",
-      locale: "en-US",
-      friendlyName: "English Female (Aria - Natural)",
-      suggested: false,
-    },
-    {
-      name: "Microsoft Guy Online (Natural) - English (United States)",
-      shortName: "en-US-GuyNeural",
-      gender: "Male",
-      locale: "en-US",
-      friendlyName: "English Male (Guy - Natural)",
-      suggested: false,
-    },
-    {
-      name: "Microsoft Jenny Online (Natural) - English (United States)",
-      shortName: "en-US-JennyNeural",
-      gender: "Female",
-      locale: "en-US",
-      friendlyName: "English Female (Jenny - Natural)",
-      suggested: false,
-    },
-  ];
-
-  try {
-    const tts = new MsEdgeTTS();
-    const rawVoices = await tts.getVoices();
-    const thaiList: TtsVoice[] = [];
-    const otherList: TtsVoice[] = [];
-
-    for (const v of rawVoices) {
-      const isPriority = priorityVoices.some((p) => p.shortName === v.ShortName);
-      if (isPriority) continue;
-
-      const item: TtsVoice = {
-        name: v.Name,
-        shortName: v.ShortName,
-        gender: v.Gender,
-        locale: v.Locale,
-        friendlyName: `${v.FriendlyName || v.ShortName} (${v.Gender})`,
-        suggested: false,
-      };
-
-      if (v.Locale.startsWith("th") || v.ShortName.startsWith("th")) {
-        thaiList.push(item);
-      } else if (v.Locale.startsWith("en")) {
-        otherList.push(item);
-      }
-    }
-
-    cachedVoicesList = [...priorityVoices, ...thaiList, ...otherList];
-    return cachedVoicesList;
-  } catch (err) {
-    console.warn("[TTS] Failed to fetch remote Edge TTS voices, using defaults:", err);
-    cachedVoicesList = priorityVoices;
-    return cachedVoicesList;
-  }
+  // Always return curated list immediately without blocking HTTP requests
+  return cachedVoicesList;
 }
 
-async function runSynthesisOnce(
+function runSynthesisOnceWithTimeout(
   ssml: string,
-  voiceName: string
+  voiceName: string,
+  timeoutMs: number = 4000
 ): Promise<Buffer> {
-  const tts = new MsEdgeTTS();
-  await tts.setMetadata(voiceName, OUTPUT_FORMAT.AUDIO_24KHZ_48KBITRATE_MONO_MP3);
-
   return new Promise((resolve, reject) => {
-    const { audioStream } = tts.rawToStream(ssml);
-    const chunks: Buffer[] = [];
+    let timer: NodeJS.Timeout | null = null;
+    let finished = false;
 
-    audioStream.on("data", (chunk: Buffer) => chunks.push(chunk));
-    audioStream.on("end", () => {
-      tts.close();
-      const full = Buffer.concat(chunks);
-      if (full.length === 0) {
-        reject(new Error("No audio bytes received from Edge TTS"));
-      } else {
-        resolve(full);
+    // Use fast connection and synthesis timeouts to prevent 60s socket hangs
+    const tts = new MsEdgeTTS({ connectionTimeoutMs: 2500, synthesisTimeoutMs: timeoutMs });
+
+    const cleanup = () => {
+      finished = true;
+      if (timer) clearTimeout(timer);
+      try {
+        tts.close();
+      } catch {}
+    };
+
+    timer = setTimeout(() => {
+      if (!finished) {
+        cleanup();
+        reject(new Error(`Edge TTS timeout after ${timeoutMs}ms for ${voiceName}`));
       }
-    });
-    audioStream.on("error", (err: Error) => {
-      tts.close();
-      reject(err);
-    });
+    }, timeoutMs);
+
+    tts
+      .setMetadata(voiceName, OUTPUT_FORMAT.AUDIO_24KHZ_48KBITRATE_MONO_MP3)
+      .then(() => {
+        if (finished) return;
+        const { audioStream } = tts.rawToStream(ssml);
+        const chunks: Buffer[] = [];
+
+        audioStream.on("data", (chunk: Buffer) => {
+          if (!finished) chunks.push(chunk);
+        });
+
+        audioStream.on("end", () => {
+          if (finished) return;
+          cleanup();
+          const full = Buffer.concat(chunks);
+          if (full.length === 0) {
+            reject(new Error(`No audio bytes received from Edge TTS for voice ${voiceName}`));
+          } else {
+            resolve(full);
+          }
+        });
+
+        audioStream.on("error", (err: Error) => {
+          if (finished) return;
+          cleanup();
+          reject(err);
+        });
+      })
+      .catch((err) => {
+        if (finished) return;
+        cleanup();
+        reject(err);
+      });
   });
 }
 
@@ -208,26 +250,42 @@ export async function synthesizeEdgeTTS(options: SynthesizeOptions): Promise<Buf
     throw new Error("Text is required for TTS synthesis");
   }
 
-  const voice = options.voice || DEFAULT_VOICE;
+  const requestedVoice = options.voice || DEFAULT_VOICE;
   const rateStr = formatRate(options.rate);
   const pitchStr = formatPitch(options.pitch);
 
-  const cacheKey = `${voice}|${rateStr}|${pitchStr}|${text}`;
+  const cacheKey = `${requestedVoice}|${rateStr}|${pitchStr}|${text}`;
   if (AUDIO_CACHE.has(cacheKey)) {
     return AUDIO_CACHE.get(cacheKey)!;
   }
 
-  const voicesToTry = [voice];
-  // If user selected Premwadee and it fails on male/tonal particles, fallback to Niwat
-  if (voice === SECONDARY_THAI_VOICE && !voicesToTry.includes(DEFAULT_VOICE)) {
+  const isThaiText = /[\u0E00-\u0E7F]/.test(text);
+
+  // Build candidate voices list
+  const voicesToTry: string[] = [];
+
+  // If text is Thai but selected voice is non-Thai, prioritize Thai male (Niwat)
+  if (isThaiText && !requestedVoice.toLowerCase().startsWith("th")) {
     voicesToTry.push(DEFAULT_VOICE);
+    if (requestedVoice !== SECONDARY_THAI_VOICE) {
+      voicesToTry.push(SECONDARY_THAI_VOICE);
+    }
+  } else {
+    voicesToTry.push(requestedVoice);
+    // Always provide Niwat as guaranteed fallback if requested voice fails
+    if (requestedVoice !== DEFAULT_VOICE) {
+      voicesToTry.push(DEFAULT_VOICE);
+    }
+    if (requestedVoice !== SECONDARY_THAI_VOICE && !voicesToTry.includes(SECONDARY_THAI_VOICE)) {
+      voicesToTry.push(SECONDARY_THAI_VOICE);
+    }
   }
 
   let lastError: Error | null = null;
   for (const v of voicesToTry) {
     try {
       const ssml = buildSSML(text, v, rateStr, pitchStr);
-      const audioBuffer = await runSynthesisOnce(ssml, v);
+      const audioBuffer = await runSynthesisOnceWithTimeout(ssml, v, 3500);
 
       if (AUDIO_CACHE.size >= MAX_CACHE_SIZE) {
         const firstKey = AUDIO_CACHE.keys().next().value;
