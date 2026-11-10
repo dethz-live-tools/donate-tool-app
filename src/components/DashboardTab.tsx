@@ -555,7 +555,7 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({
                             ? "var(--ctp-lavender)"
                             : log.type === "spotify"
                             ? "var(--ctp-green)"
-                            : "var(--ctp-mauve)",
+                            : "var(--accent-primary)",
                         marginRight: "8px",
                       }}
                     >

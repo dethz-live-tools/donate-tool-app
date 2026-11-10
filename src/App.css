@@ -35,7 +35,7 @@
   --text-primary: var(--ctp-text);
   --text-secondary: var(--ctp-subtext0);
   --text-muted: var(--ctp-overlay1);
-  --accent-primary: var(--ctp-mauve);
+  --accent-primary: var(--ctp-sapphire);
   --accent-contrast: var(--ctp-crust);
   --status-success: var(--ctp-green);
   --status-warning: var(--ctp-peach);
@@ -344,7 +344,7 @@ h3 {
   background-color: var(--ctp-surface0) !important;
 }
 
-/* Primary Button (Mauve accent) */
+/* Primary Button (Sapphire accent) */
 .btn-primary {
   background-color: var(--accent-primary);
   color: var(--accent-contrast);
@@ -402,7 +402,7 @@ h3 {
   padding: 14px;
   font-family: var(--font-mono);
   font-size: 13px;
-  color: var(--ctp-mauve);
+  color: var(--accent-primary);
   white-space: pre-wrap;
   word-break: break-all;
 }
@@ -825,7 +825,7 @@ h3 {
 }
 
 .spotify-playlist-card:hover {
-  border-color: var(--ctp-mauve);
+  border-color: var(--accent-primary);
 }
 
 .spotify-playlist-cover {
