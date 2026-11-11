@@ -93,3 +93,15 @@ export function broadcastChat(chat: TikTokChatMessage) {
     }
   }
 }
+
+// 15-second heartbeat ping to prevent OBS Studio and browsers from timing out SSE connections
+setInterval(() => {
+  for (let i = sseClients.length - 1; i >= 0; i--) {
+    const res = sseClients[i];
+    try {
+      res.write(": keep-alive\n\n");
+    } catch {
+      sseClients.splice(i, 1);
+    }
+  }
+}, 15000);

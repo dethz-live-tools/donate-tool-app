@@ -9,7 +9,7 @@ export async function handleStatusRoutes(
   res: http.ServerResponse,
   url: URL
 ): Promise<boolean> {
-  if (url.pathname === "/api/status" && req.method === "GET") {
+  if ((url.pathname === "/api/status" || url.pathname === "/api/status/") && req.method === "GET") {
     state.spotify = getSpotifyPublicState();
     sendJson(res, 200, {
       username: state.username,
@@ -26,12 +26,23 @@ export async function handleStatusRoutes(
     return true;
   }
 
-  if (url.pathname === "/api/events" && req.method === "GET") {
+  // SSE stream endpoint (serves /api/status/stream for overlays and /api/events for UI)
+  if (
+    (url.pathname === "/api/events" ||
+      url.pathname === "/api/events/" ||
+      url.pathname === "/api/status/stream" ||
+      url.pathname === "/api/status/stream/") &&
+    req.method === "GET"
+  ) {
+    state.spotify = getSpotifyPublicState();
     res.writeHead(200, {
-      "Content-Type": "text/event-stream",
-      "Cache-Control": "no-cache",
+      "Content-Type": "text/event-stream; charset=utf-8",
+      "Cache-Control": "no-cache, no-transform",
       Connection: "keep-alive",
+      "Access-Control-Allow-Origin": "*",
+      "X-Accel-Buffering": "no",
     });
+    res.write(": keep-alive\n\n");
     res.write(
       `data: ${JSON.stringify({
         username: state.username,
