@@ -1,5 +1,14 @@
-import React, { useState } from "react";
+import React, { useState, useMemo } from "react";
 import { OverlayMarketItem, OverlayMeta } from "../types";
+
+function detectOS(): "mac" | "windows" | "linux" {
+  if (typeof window === "undefined" || !navigator) return "mac";
+  const userAgent = navigator.userAgent || "";
+  const platform = (navigator as any).userAgentData?.platform || navigator.platform || "";
+  if (/win/i.test(platform) || /windows/i.test(userAgent)) return "windows";
+  if (/mac/i.test(platform) || /macintosh|mac os x/i.test(userAgent)) return "mac";
+  return "linux";
+}
 
 interface OverlaysTabProps {
   apiBase: string;
@@ -34,6 +43,42 @@ export const OverlaysTab: React.FC<OverlaysTabProps> = ({
   const [copiedId, setCopiedId] = useState<string | null>(null);
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [installingId, setInstallingId] = useState<string | null>(null);
+  const [openingFolder, setOpeningFolder] = useState<string | null>(null);
+
+  const os = useMemo(() => detectOS(), []);
+  const osFolderLabel = os === "mac" ? "FINDER" : os === "windows" ? "EXPLORER" : "FOLDER";
+
+  async function handleOpenFolder(id?: string) {
+    const key = id || "root";
+    setOpeningFolder(key);
+    try {
+      // 1. Try desktop Tauri opener plugin if running in Tauri app
+      try {
+        const { openPath } = await import("@tauri-apps/plugin-opener");
+        const res = await fetch(`${apiBase}/api/overlays/open-folder`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(id ? { id } : {}),
+        });
+        const data = await res.json();
+        if (data.path) {
+          await openPath(data.path);
+          return;
+        }
+      } catch {}
+
+      // 2. Direct server endpoint execution fallback
+      await fetch(`${apiBase}/api/overlays/open-folder`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(id ? { id } : {}),
+      });
+    } catch (err) {
+      console.error("Failed to open folder:", err);
+    } finally {
+      setTimeout(() => setOpeningFolder(null), 800);
+    }
+  }
 
   // Form state for creating custom overlay
   const [customName, setCustomName] = useState("");
@@ -123,7 +168,17 @@ export const OverlaysTab: React.FC<OverlaysTabProps> = ({
               OBS / STREAMLABS BROWSER SOURCES
             </span>
           </div>
-          <div style={{ display: "flex", gap: "8px" }}>
+          <div style={{ display: "flex", gap: "8px", flexWrap: "wrap" }}>
+            <button
+              type="button"
+              className="btn btn-secondary"
+              style={{ padding: "4px 10px", fontSize: "11px" }}
+              onClick={() => handleOpenFolder()}
+              disabled={openingFolder === "root"}
+              title={`Open overlays folder in ${os === "mac" ? "macOS Finder" : os === "windows" ? "Windows File Explorer" : "Linux File Manager"}`}
+            >
+              📁 {openingFolder === "root" ? "OPENING..." : `OPEN IN ${osFolderLabel}`}
+            </button>
             <button
               type="button"
               className="btn btn-secondary"
@@ -236,6 +291,19 @@ export const OverlaysTab: React.FC<OverlaysTabProps> = ({
                   👁 LIVE PREVIEW
                 </button>
 
+                {item.isInstalled && (
+                  <button
+                    type="button"
+                    className="btn btn-secondary"
+                    style={{ padding: "6px 10px", fontSize: "11px" }}
+                    onClick={() => handleOpenFolder(item.id)}
+                    disabled={openingFolder === item.id}
+                    title={`Open this overlay in ${os === "mac" ? "Finder" : os === "windows" ? "File Explorer" : "File Manager"}`}
+                  >
+                    📁 {openingFolder === item.id ? "..." : "FOLDER"}
+                  </button>
+                )}
+
                 {!item.isCustom && (
                   <button
                     type="button"
@@ -325,6 +393,15 @@ export const OverlaysTab: React.FC<OverlaysTabProps> = ({
                 >
                   OPEN TAB ↗
                 </a>
+                <button
+                  type="button"
+                  className="btn btn-secondary"
+                  style={{ padding: "6px 14px", fontSize: "11px" }}
+                  onClick={() => handleOpenFolder(previewOverlay.id)}
+                  title={`Open this overlay in ${os === "mac" ? "Finder" : os === "windows" ? "File Explorer" : "File Manager"}`}
+                >
+                  📁 {osFolderLabel}
+                </button>
               </div>
             </div>
           </div>

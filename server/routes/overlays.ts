@@ -7,6 +7,7 @@ import {
   getInstalledOverlays,
   getMarketCatalog,
   installMarketOverlay,
+  openFolderInOS,
   OVERLAYS_DIR,
 } from "../services/overlays.ts";
 import { parseJsonBody, sendJson } from "../utils.ts";
@@ -160,6 +161,29 @@ export async function handleOverlayRoutes(
     }
     const deleted = deleteOverlay(overlayId);
     sendJson(res, 200, { success: deleted, id: overlayId });
+    return true;
+  }
+
+  // 7. API: Open overlays folder in OS file manager (Finder / Explorer / File Manager)
+  if (
+    (url.pathname === "/api/overlays/open-folder" || url.pathname === "/api/overlays/open-folder/") &&
+    (req.method === "POST" || req.method === "GET")
+  ) {
+    try {
+      let subpath = url.searchParams.get("id") || undefined;
+      if (req.method === "POST") {
+        try {
+          const body = await parseJsonBody(req);
+          if (body?.id) subpath = String(body.id);
+          if (body?.subpath) subpath = String(body.subpath);
+        } catch {}
+      }
+
+      const result = await openFolderInOS(subpath);
+      sendJson(res, 200, result);
+    } catch (err: any) {
+      sendJson(res, 500, { success: false, error: err.message });
+    }
     return true;
   }
 

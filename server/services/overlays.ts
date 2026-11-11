@@ -1,3 +1,4 @@
+import { exec } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
 import process from "node:process";
@@ -977,4 +978,40 @@ export function deleteOverlay(overlayId: string): boolean {
     return true;
   }
   return false;
+}
+
+export function openFolderInOS(subpath?: string): Promise<{ success: boolean; path: string; platform: string; error?: string }> {
+  ensureOverlaysDir();
+  let targetPath = OVERLAYS_DIR;
+
+  if (subpath && typeof subpath === "string") {
+    const cleanSub = path.basename(subpath.trim());
+    if (cleanSub && /^[a-zA-Z0-9_-]+$/.test(cleanSub)) {
+      const candidate = path.join(OVERLAYS_DIR, cleanSub);
+      if (fs.existsSync(candidate)) {
+        targetPath = candidate;
+      }
+    }
+  }
+
+  const platform = process.platform;
+  return new Promise((resolve) => {
+    let cmd = "";
+    if (platform === "darwin") {
+      cmd = `open "${targetPath}"`;
+    } else if (platform === "win32") {
+      cmd = `explorer "${targetPath.replace(/\//g, "\\")}"`;
+    } else {
+      cmd = `xdg-open "${targetPath}"`;
+    }
+
+    exec(cmd, (err) => {
+      if (err) {
+        console.error(`[Overlays] Failed to open folder (${cmd}):`, err.message);
+        resolve({ success: false, path: targetPath, platform, error: err.message });
+      } else {
+        resolve({ success: true, path: targetPath, platform });
+      }
+    });
+  });
 }
