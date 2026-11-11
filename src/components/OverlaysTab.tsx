@@ -10,6 +10,38 @@ function detectOS(): "mac" | "windows" | "linux" {
   return "linux";
 }
 
+export function extractRepoName(url: string): string {
+  if (!url || typeof url !== "string") return "";
+  const clean = url.trim().split("?")[0].split("#")[0].replace(/\/+$/, "");
+
+  // Match git hosts like github.com, gitlab.com, bitbucket.org
+  const gitHostMatch = clean.match(/(?:github\.com|gitlab\.com|bitbucket\.org)[:/]([^/]+)\/([^/]+)/i);
+  if (gitHostMatch) {
+    let repoName = gitHostMatch[2];
+    repoName = repoName.replace(/\.git$/i, "");
+    return repoName.toLowerCase().replace(/[^a-z0-9_-]/g, "-");
+  }
+
+  // Handle SSH git format git@...:owner/repo.git
+  const sshMatch = clean.match(/[:/]([^/:]+?)(?:\.git)?$/i);
+  if (sshMatch && sshMatch[1]) {
+    return sshMatch[1].toLowerCase().replace(/[^a-z0-9_-]/g, "-");
+  }
+
+  // Path-based fallback
+  const parts = clean.split("/").filter(Boolean);
+  let last = parts.pop() || "";
+  last = last.replace(/\.git$/i, "").replace(/\.zip$/i, "");
+  if ((last === "main" || last === "master" || last === "head") && parts.length > 0) {
+    const prev = parts.pop() || "";
+    if (prev && !["archive", "refs", "heads"].includes(prev)) {
+      last = prev;
+    }
+  }
+
+  return last.toLowerCase().replace(/[^a-z0-9_-]/g, "-");
+}
+
 interface OverlaysTabProps {
   apiBase: string;
   installedOverlays: OverlayMeta[];
@@ -26,6 +58,7 @@ interface OverlaysTabProps {
     height: number;
   }) => Promise<void>;
   onDeleteOverlay: (id: string) => Promise<void>;
+  onOpenStudio?: () => void;
 }
 
 export const OverlaysTab: React.FC<OverlaysTabProps> = ({
@@ -37,6 +70,7 @@ export const OverlaysTab: React.FC<OverlaysTabProps> = ({
   onInstall,
   onCreateCustom,
   onDeleteOverlay,
+  onOpenStudio,
 }) => {
   const [activeCategory, setActiveCategory] = useState<string>("ALL");
   const [previewOverlay, setPreviewOverlay] = useState<OverlayMeta | null>(null);
@@ -93,6 +127,7 @@ export const OverlaysTab: React.FC<OverlaysTabProps> = ({
   const [showGitModal, setShowGitModal] = useState(false);
   const [gitUrl, setGitUrl] = useState("");
   const [gitOverlayId, setGitOverlayId] = useState("");
+  const [idManuallyEdited, setIdManuallyEdited] = useState(false);
   const [pullingGit, setPullingGit] = useState(false);
   const [gitPullError, setGitPullError] = useState<string | null>(null);
   const [gitPullSuccess, setGitPullSuccess] = useState<string | null>(null);
@@ -116,13 +151,15 @@ export const OverlaysTab: React.FC<OverlaysTabProps> = ({
     setGitPullError(null);
     setGitPullSuccess(null);
 
+    const finalId = gitOverlayId.trim() || extractRepoName(gitUrl) || undefined;
+
     try {
       const res = await fetch(`${apiBase}/api/overlays/pull-git`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           url: gitUrl.trim(),
-          id: gitOverlayId.trim() || undefined,
+          id: finalId,
         }),
       });
 
@@ -135,6 +172,7 @@ export const OverlaysTab: React.FC<OverlaysTabProps> = ({
         setGitPullSuccess(`Installed "${data.overlay?.name || "overlay"}" successfully! (${methodMsg})`);
         setGitUrl("");
         setGitOverlayId("");
+        setIdManuallyEdited(false);
         await onRefresh();
         setTimeout(() => {
           setShowGitModal(false);
@@ -230,6 +268,16 @@ export const OverlaysTab: React.FC<OverlaysTabProps> = ({
             </span>
           </div>
           <div style={{ display: "flex", gap: "8px", flexWrap: "wrap" }}>
+            {onOpenStudio && (
+              <button
+                type="button"
+                className="btn btn-primary"
+                style={{ padding: "4px 12px", fontSize: "11px" }}
+                onClick={onOpenStudio}
+              >
+                🎛 OPEN STUDIO COMPOSER
+              </button>
+            )}
             <button
               type="button"
               className="btn btn-secondary"
@@ -246,6 +294,7 @@ export const OverlaysTab: React.FC<OverlaysTabProps> = ({
               style={{ padding: "4px 10px", fontSize: "11px" }}
               onClick={() => {
                 setShowGitModal(true);
+                setIdManuallyEdited(false);
                 checkGitStatus();
               }}
               title="Pull or clone an overlay from a Git repository or zip archive"
@@ -650,24 +699,50 @@ export const OverlaysTab: React.FC<OverlaysTabProps> = ({
                   className="raw-input"
                   placeholder="https://github.com/username/overlay-name"
                   value={gitUrl}
-                  onChange={(e) => setGitUrl(e.target.value)}
+                  onChange={(e) => {
+                    const val = e.target.value;
+                    setGitUrl(val);
+                    if (!idManuallyEdited || !gitOverlayId.trim()) {
+                      const auto = extractRepoName(val);
+                      if (auto) setGitOverlayId(auto);
+                    }
+                  }}
                   disabled={pullingGit}
                   required
                 />
               </div>
 
               <div className="form-group">
-                <label className="form-label">CUSTOM OVERLAY ID (OPTIONAL)</label>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "4px" }}>
+                  <label className="form-label" style={{ marginBottom: 0 }}>OVERLAY ID</label>
+                  {idManuallyEdited && (
+                    <button
+                      type="button"
+                      className="btn btn-secondary"
+                      style={{ padding: "1px 6px", fontSize: "10px", lineHeight: "14px" }}
+                      onClick={() => {
+                        setIdManuallyEdited(false);
+                        setGitOverlayId(extractRepoName(gitUrl));
+                      }}
+                      title="Reset to auto-generated ID from repository name"
+                    >
+                      ↺ AUTO FROM REPO
+                    </button>
+                  )}
+                </div>
                 <input
                   type="text"
                   className="raw-input"
-                  placeholder="e.g. retro-chat (leave blank to auto-detect from repo)"
+                  placeholder={extractRepoName(gitUrl) || "auto-detected from repo name"}
                   value={gitOverlayId}
-                  onChange={(e) => setGitOverlayId(e.target.value)}
+                  onChange={(e) => {
+                    setGitOverlayId(e.target.value);
+                    setIdManuallyEdited(true);
+                  }}
                   disabled={pullingGit}
                 />
                 <span className="form-helper">
-                  Folder name inside your overlays directory (lowercase letters, numbers, hyphens).
+                  Folder name inside your overlays directory (auto-generated from repo name).
                 </span>
               </div>
 

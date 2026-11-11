@@ -884,7 +884,8 @@ export function createCustomOverlay(data: {
   height?: number;
 }): OverlayMeta {
   ensureOverlaysDir();
-  const safeId = data.id.toLowerCase().replace(/[^a-z0-9-_]/g, "-").trim() || "my-overlay";
+  const rawId = data.id.toLowerCase().replace(/[^a-z0-9-_]/g, "-").trim() || "my-overlay";
+  const safeId = rawId === "studio" ? "custom-studio" : rawId;
   const targetDir = path.join(OVERLAYS_DIR, safeId);
 
   if (!fs.existsSync(targetDir)) {
@@ -1015,6 +1016,38 @@ export function openFolderInOS(subpath?: string): Promise<{ success: boolean; pa
       }
     });
   });
+}
+
+export function extractRepoName(url: string): string {
+  if (!url || typeof url !== "string") return "";
+  let clean = url.trim().split("?")[0].split("#")[0].replace(/\/+$/, "");
+
+  // Match git hosts like github.com, gitlab.com, bitbucket.org
+  const gitHostMatch = clean.match(/(?:github\.com|gitlab\.com|bitbucket\.org)[:/]([^/]+)\/([^/]+)/i);
+  if (gitHostMatch) {
+    let repoName = gitHostMatch[2];
+    repoName = repoName.replace(/\.git$/i, "");
+    return repoName.toLowerCase().replace(/[^a-z0-9_-]/g, "-");
+  }
+
+  // Handle SSH git format git@...:owner/repo.git
+  const sshMatch = clean.match(/[:/]([^/:]+?)(?:\.git)?$/i);
+  if (sshMatch && sshMatch[1]) {
+    return sshMatch[1].toLowerCase().replace(/[^a-z0-9_-]/g, "-");
+  }
+
+  // Path-based fallback
+  const parts = clean.split("/").filter(Boolean);
+  let last = parts.pop() || "";
+  last = last.replace(/\.git$/i, "").replace(/\.zip$/i, "");
+  if ((last === "main" || last === "master" || last === "head") && parts.length > 0) {
+    const prev = parts.pop() || "";
+    if (prev && !["archive", "refs", "heads"].includes(prev)) {
+      last = prev;
+    }
+  }
+
+  return last.toLowerCase().replace(/[^a-z0-9_-]/g, "-");
 }
 
 export function checkGitAvailable(): Promise<boolean> {
@@ -1179,11 +1212,10 @@ export async function pullOverlayFromGit(options: {
 
   ensureOverlaysDir();
 
-  // Extract ID from URL if not provided
+  // Auto-generate ID from repo name if not provided
   let safeId = (options.id || "").trim();
   if (!safeId) {
-    const rawRepo = gitUrl.replace(/\.git$/, "").replace(/\/+$/, "").split("/").pop() || "imported-overlay";
-    safeId = rawRepo.toLowerCase().replace(/[^a-z0-9_-]/g, "-");
+    safeId = extractRepoName(gitUrl) || "imported-overlay";
   } else {
     safeId = safeId.toLowerCase().replace(/[^a-z0-9_-]/g, "-");
   }
