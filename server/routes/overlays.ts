@@ -2,6 +2,7 @@ import fs from "node:fs";
 import type http from "node:http";
 import path from "node:path";
 import {
+  checkGitAvailable,
   createCustomOverlay,
   deleteOverlay,
   getInstalledOverlays,
@@ -9,6 +10,7 @@ import {
   installMarketOverlay,
   openFolderInOS,
   OVERLAYS_DIR,
+  pullOverlayFromGit,
 } from "../services/overlays.ts";
 import { parseJsonBody, sendJson } from "../utils.ts";
 
@@ -183,6 +185,52 @@ export async function handleOverlayRoutes(
       sendJson(res, 200, result);
     } catch (err: any) {
       sendJson(res, 500, { success: false, error: err.message });
+    }
+    return true;
+  }
+
+  // 8. API: Check if Git is available on system
+  if (
+    (url.pathname === "/api/overlays/git-status" || url.pathname === "/api/overlays/git-status/") &&
+    req.method === "GET"
+  ) {
+    const hasGit = await checkGitAvailable();
+    sendJson(res, 200, { success: true, hasGit });
+    return true;
+  }
+
+  // 9. API: Pull / clone overlay from Git repository or zip
+  if (
+    (url.pathname === "/api/overlays/pull-git" || url.pathname === "/api/overlays/pull-git/") &&
+    req.method === "POST"
+  ) {
+    try {
+      const body = await parseJsonBody(req);
+      const gitUrl = String(body?.url || body?.gitUrl || "").trim();
+      if (!gitUrl) {
+        sendJson(res, 400, { success: false, error: "Repository URL is required" });
+        return true;
+      }
+
+      const result = await pullOverlayFromGit({
+        gitUrl,
+        id: body?.id ? String(body.id).trim() : undefined,
+      });
+
+      sendJson(res, 200, {
+        success: true,
+        method: result.method,
+        hasGit: result.hasGit,
+        overlay: result.overlay,
+        path: result.path,
+        message:
+          result.method === "git_clone"
+            ? `Overlay "${result.overlay.name}" cloned successfully via Git.`
+            : `Overlay "${result.overlay.name}" downloaded and extracted from ZIP archive.`,
+      });
+    } catch (err: any) {
+      console.error("[Overlays Route] POST /api/overlays/pull-git failed:", err);
+      sendJson(res, 500, { success: false, error: err?.message || "Failed to pull overlay" });
     }
     return true;
   }

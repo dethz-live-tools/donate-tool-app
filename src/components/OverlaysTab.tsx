@@ -89,6 +89,67 @@ export const OverlaysTab: React.FC<OverlaysTabProps> = ({
   const [customHeight, setCustomHeight] = useState(160);
   const [creating, setCreating] = useState(false);
 
+  // Form state for pulling overlay from Git / zip
+  const [showGitModal, setShowGitModal] = useState(false);
+  const [gitUrl, setGitUrl] = useState("");
+  const [gitOverlayId, setGitOverlayId] = useState("");
+  const [pullingGit, setPullingGit] = useState(false);
+  const [gitPullError, setGitPullError] = useState<string | null>(null);
+  const [gitPullSuccess, setGitPullSuccess] = useState<string | null>(null);
+  const [systemHasGit, setSystemHasGit] = useState<boolean | null>(null);
+
+  const checkGitStatus = async () => {
+    try {
+      const res = await fetch(`${apiBase}/api/overlays/git-status`);
+      if (res.ok) {
+        const data = await res.json();
+        setSystemHasGit(Boolean(data.hasGit));
+      }
+    } catch {}
+  };
+
+  async function handlePullGitSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    if (!gitUrl.trim()) return;
+
+    setPullingGit(true);
+    setGitPullError(null);
+    setGitPullSuccess(null);
+
+    try {
+      const res = await fetch(`${apiBase}/api/overlays/pull-git`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          url: gitUrl.trim(),
+          id: gitOverlayId.trim() || undefined,
+        }),
+      });
+
+      const data = await res.json();
+      if (data.success) {
+        const methodMsg =
+          data.method === "git_clone"
+            ? "Cloned via Git (shallow clone)"
+            : "Downloaded & extracted via ZIP archive";
+        setGitPullSuccess(`Installed "${data.overlay?.name || "overlay"}" successfully! (${methodMsg})`);
+        setGitUrl("");
+        setGitOverlayId("");
+        await onRefresh();
+        setTimeout(() => {
+          setShowGitModal(false);
+          setGitPullSuccess(null);
+        }, 1500);
+      } else {
+        setGitPullError(data.error || "Failed to pull overlay");
+      }
+    } catch (err: any) {
+      setGitPullError(`Network error: ${err.message}`);
+    } finally {
+      setPullingGit(false);
+    }
+  }
+
   // Combine market catalog with custom installed overlays not present in market
   const installedMap = new Map(installedOverlays.map((o) => [o.id, o]));
 
@@ -178,6 +239,18 @@ export const OverlaysTab: React.FC<OverlaysTabProps> = ({
               title={`Open overlays folder in ${os === "mac" ? "macOS Finder" : os === "windows" ? "Windows File Explorer" : "Linux File Manager"}`}
             >
               📁 {openingFolder === "root" ? "OPENING..." : `OPEN IN ${osFolderLabel}`}
+            </button>
+            <button
+              type="button"
+              className="btn btn-secondary"
+              style={{ padding: "4px 10px", fontSize: "11px" }}
+              onClick={() => {
+                setShowGitModal(true);
+                checkGitStatus();
+              }}
+              title="Pull or clone an overlay from a Git repository or zip archive"
+            >
+              📥 PULL FROM GIT
             </button>
             <button
               type="button"
@@ -510,6 +583,111 @@ export const OverlaysTab: React.FC<OverlaysTabProps> = ({
                   type="button"
                   className="btn btn-secondary"
                   onClick={() => setShowCreateModal(false)}
+                >
+                  CANCEL
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Pull Overlay from Git / Zip Modal */}
+      {showGitModal && (
+        <div className="modal-backdrop" onClick={() => !pullingGit && setShowGitModal(false)}>
+          <div className="modal-content small" onClick={(e) => e.stopPropagation()}>
+            <div className="modal-header">
+              <div style={{ display: "flex", alignItems: "center", gap: "8px", flexWrap: "wrap" }}>
+                <h3>PULL OVERLAY FROM GIT</h3>
+                {systemHasGit !== null && (
+                  <span
+                    className="tag-chip"
+                    style={{
+                      fontSize: "10px",
+                      background: systemHasGit ? "var(--status-success)" : "var(--ctp-peach)",
+                      color: "var(--ctp-crust)",
+                      fontWeight: "bold",
+                    }}
+                  >
+                    {systemHasGit ? "⚡ GIT AVAILABLE (CLONE)" : "📦 NO GIT (ZIP EXTRACT)"}
+                  </span>
+                )}
+              </div>
+              <button
+                type="button"
+                className="btn btn-secondary"
+                style={{ padding: "2px 8px", fontSize: "12px" }}
+                onClick={() => !pullingGit && setShowGitModal(false)}
+                disabled={pullingGit}
+              >
+                ✕
+              </button>
+            </div>
+
+            <form onSubmit={handlePullGitSubmit} className="modal-body form-grid">
+              <p style={{ fontSize: "12px", color: "var(--ctp-subtext0)", lineHeight: "1.5" }}>
+                Enter a Git repository URL (GitHub, GitLab, etc.) or a direct zip URL. If Git is detected on your machine, it performs a fast shallow clone; if not, it automatically downloads and extracts the repository ZIP archive.
+              </p>
+
+              {gitPullError && (
+                <div className="alert-banner" style={{ padding: "8px 12px", fontSize: "12px" }}>
+                  <span>[!]</span>
+                  <span>{gitPullError}</span>
+                </div>
+              )}
+
+              {gitPullSuccess && (
+                <div className="alert-banner success" style={{ padding: "8px 12px", fontSize: "12px" }}>
+                  <span>[OK]</span>
+                  <span>{gitPullSuccess}</span>
+                </div>
+              )}
+
+              <div className="form-group">
+                <label className="form-label">REPOSITORY OR ZIP URL *</label>
+                <input
+                  type="text"
+                  className="raw-input"
+                  placeholder="https://github.com/username/overlay-name"
+                  value={gitUrl}
+                  onChange={(e) => setGitUrl(e.target.value)}
+                  disabled={pullingGit}
+                  required
+                />
+              </div>
+
+              <div className="form-group">
+                <label className="form-label">CUSTOM OVERLAY ID (OPTIONAL)</label>
+                <input
+                  type="text"
+                  className="raw-input"
+                  placeholder="e.g. retro-chat (leave blank to auto-detect from repo)"
+                  value={gitOverlayId}
+                  onChange={(e) => setGitOverlayId(e.target.value)}
+                  disabled={pullingGit}
+                />
+                <span className="form-helper">
+                  Folder name inside your overlays directory (lowercase letters, numbers, hyphens).
+                </span>
+              </div>
+
+              <div className="btn-row" style={{ marginTop: "12px" }}>
+                <button
+                  type="submit"
+                  className="btn btn-primary"
+                  disabled={pullingGit || !gitUrl.trim()}
+                >
+                  {pullingGit
+                    ? systemHasGit
+                      ? "CLONING REPOSITORY..."
+                      : "DOWNLOADING & EXTRACTING ZIP..."
+                    : "📥 PULL & INSTALL"}
+                </button>
+                <button
+                  type="button"
+                  className="btn btn-secondary"
+                  onClick={() => setShowGitModal(false)}
+                  disabled={pullingGit}
                 >
                   CANCEL
                 </button>

@@ -1,5 +1,6 @@
 import { exec } from "node:child_process";
 import fs from "node:fs";
+import os from "node:os";
 import path from "node:path";
 import process from "node:process";
 import type { OverlayMarketItem, OverlayMeta } from "../types.ts";
@@ -1014,4 +1015,307 @@ export function openFolderInOS(subpath?: string): Promise<{ success: boolean; pa
       }
     });
   });
+}
+
+export function checkGitAvailable(): Promise<boolean> {
+  return new Promise((resolve) => {
+    exec("git --version", (err, stdout) => {
+      resolve(!err && typeof stdout === "string" && stdout.includes("git version"));
+    });
+  });
+}
+
+function resolveZipUrl(gitUrl: string): string[] {
+  const trimmed = gitUrl.trim().replace(/\.git$/, "");
+  const urls: string[] = [];
+
+  if (trimmed.endsWith(".zip")) {
+    return [trimmed];
+  }
+
+  // GitHub: https://github.com/owner/repo
+  const ghMatch = trimmed.match(/^https?:\/\/github\.com\/([^/]+)\/([^/]+)/i);
+  if (ghMatch) {
+    const owner = ghMatch[1];
+    const repo = ghMatch[2].replace(/\/.*$/, "");
+    urls.push(`https://github.com/${owner}/${repo}/archive/refs/heads/main.zip`);
+    urls.push(`https://github.com/${owner}/${repo}/archive/refs/heads/master.zip`);
+    urls.push(`https://api.github.com/repos/${owner}/${repo}/zipball`);
+    return urls;
+  }
+
+  // GitLab: https://gitlab.com/owner/repo
+  const glMatch = trimmed.match(/^https?:\/\/gitlab\.com\/([^/]+)\/([^/]+)/i);
+  if (glMatch) {
+    const owner = glMatch[1];
+    const repo = glMatch[2].replace(/\/.*$/, "");
+    urls.push(`https://gitlab.com/${owner}/${repo}/-/archive/main/${repo}-main.zip`);
+    urls.push(`https://gitlab.com/${owner}/${repo}/-/archive/master/${repo}-master.zip`);
+    return urls;
+  }
+
+  // Bitbucket: https://bitbucket.org/owner/repo
+  const bbMatch = trimmed.match(/^https?:\/\/bitbucket\.org\/([^/]+)\/([^/]+)/i);
+  if (bbMatch) {
+    const owner = bbMatch[1];
+    const repo = bbMatch[2].replace(/\/.*$/, "");
+    urls.push(`https://bitbucket.org/${owner}/${repo}/get/main.zip`);
+    urls.push(`https://bitbucket.org/${owner}/${repo}/get/master.zip`);
+    return urls;
+  }
+
+  urls.push(trimmed);
+  return urls;
+}
+
+function extractZip(zipFilePath: string, destDir: string): Promise<boolean> {
+  const platform = process.platform;
+  return new Promise((resolve) => {
+    let cmd = "";
+    if (platform === "win32") {
+      cmd = `tar -xf "${zipFilePath}" -C "${destDir}" 2>nul || powershell -command "Expand-Archive -LiteralPath '${zipFilePath}' -DestinationPath '${destDir}' -Force"`;
+    } else {
+      cmd = `unzip -q -o "${zipFilePath}" -d "${destDir}"`;
+    }
+    exec(cmd, (err) => {
+      if (err) {
+        console.error("[Overlays] Extract zip error:", err.message);
+        resolve(false);
+      } else {
+        resolve(true);
+      }
+    });
+  });
+}
+
+function copyRecursiveSync(src: string, dest: string) {
+  if (!fs.existsSync(src)) return;
+  fs.mkdirSync(dest, { recursive: true });
+  const entries = fs.readdirSync(src, { withFileTypes: true });
+  for (const entry of entries) {
+    if (entry.name === ".git" || entry.name === "__MACOSX") continue;
+    const srcPath = path.join(src, entry.name);
+    const destPath = path.join(dest, entry.name);
+    if (entry.isDirectory()) {
+      copyRecursiveSync(srcPath, destPath);
+    } else {
+      fs.copyFileSync(srcPath, destPath);
+    }
+  }
+}
+
+async function downloadAndExtractZip(candidateUrls: string[], targetDir: string): Promise<boolean> {
+  const tmpZip = path.join(os.tmpdir(), `overlay-download-${Date.now()}.zip`);
+  const tmpExtract = path.join(os.tmpdir(), `overlay-extract-${Date.now()}`);
+
+  try {
+    let downloaded = false;
+    for (const url of candidateUrls) {
+      try {
+        const res = await fetch(url, {
+          headers: {
+            "User-Agent": "donate-socket-overlay-importer",
+            Accept: "*/*",
+          },
+        });
+        if (res.ok) {
+          const arrayBuf = await res.arrayBuffer();
+          if (arrayBuf.byteLength > 100) {
+            fs.writeFileSync(tmpZip, Buffer.from(arrayBuf));
+            downloaded = true;
+            break;
+          }
+        }
+      } catch (err: any) {
+        console.warn(`[Overlays] Failed to download from ${url}:`, err.message);
+      }
+    }
+
+    if (!downloaded || !fs.existsSync(tmpZip)) {
+      throw new Error("Failed to download zip from repository");
+    }
+
+    fs.mkdirSync(tmpExtract, { recursive: true });
+    const extracted = await extractZip(tmpZip, tmpExtract);
+    if (!extracted) {
+      throw new Error("Failed to extract zip archive");
+    }
+
+    // Check if the zip extracted into a single wrapper folder (e.g. repo-main/)
+    const entries = fs.readdirSync(tmpExtract).filter((e) => !e.startsWith(".") && e !== "__MACOSX");
+    let sourceDir = tmpExtract;
+    if (entries.length === 1) {
+      const singleDir = path.join(tmpExtract, entries[0]);
+      if (fs.statSync(singleDir).isDirectory()) {
+        sourceDir = singleDir;
+      }
+    }
+
+    fs.mkdirSync(targetDir, { recursive: true });
+    copyRecursiveSync(sourceDir, targetDir);
+    return true;
+  } finally {
+    try {
+      if (fs.existsSync(tmpZip)) fs.unlinkSync(tmpZip);
+      if (fs.existsSync(tmpExtract)) fs.rmSync(tmpExtract, { recursive: true, force: true });
+    } catch {}
+  }
+}
+
+export async function pullOverlayFromGit(options: {
+  gitUrl: string;
+  id?: string;
+}): Promise<{
+  success: boolean;
+  method: "git_clone" | "zip_download";
+  overlay: OverlayMeta;
+  path: string;
+  hasGit: boolean;
+}> {
+  const gitUrl = (options.gitUrl || "").trim();
+  if (!gitUrl) {
+    throw new Error("Git repository URL is required");
+  }
+
+  ensureOverlaysDir();
+
+  // Extract ID from URL if not provided
+  let safeId = (options.id || "").trim();
+  if (!safeId) {
+    const rawRepo = gitUrl.replace(/\.git$/, "").replace(/\/+$/, "").split("/").pop() || "imported-overlay";
+    safeId = rawRepo.toLowerCase().replace(/[^a-z0-9_-]/g, "-");
+  } else {
+    safeId = safeId.toLowerCase().replace(/[^a-z0-9_-]/g, "-");
+  }
+
+  if (!safeId || safeId === "." || safeId === "..") {
+    safeId = `overlay-${Date.now()}`;
+  }
+
+  const targetDir = path.resolve(OVERLAYS_DIR, safeId);
+  const relative = path.relative(OVERLAYS_DIR, targetDir);
+  if (relative.startsWith("..") || path.isAbsolute(relative) || targetDir === OVERLAYS_DIR) {
+    throw new Error("Invalid overlay destination path");
+  }
+
+  if (fs.existsSync(targetDir)) {
+    fs.rmSync(targetDir, { recursive: true, force: true });
+  }
+
+  const hasGit = await checkGitAvailable();
+  let method: "git_clone" | "zip_download" = "git_clone";
+
+  if (hasGit) {
+    try {
+      console.log(`[Overlays] Git detected. Cloning ${gitUrl}...`);
+      await new Promise<void>((resolve, reject) => {
+        exec(`git clone --depth 1 "${gitUrl}" "${targetDir}"`, (err, _stdout, stderr) => {
+          if (err) {
+            reject(new Error(`git clone error: ${stderr || err.message}`));
+          } else {
+            resolve();
+          }
+        });
+      });
+
+      // Remove .git inside overlay directory to avoid nested repo issues
+      const dotGit = path.join(targetDir, ".git");
+      if (fs.existsSync(dotGit)) {
+        fs.rmSync(dotGit, { recursive: true, force: true });
+      }
+    } catch (cloneErr: any) {
+      console.warn(`[Overlays] git clone failed (${cloneErr.message}), falling back to zip download...`);
+      method = "zip_download";
+      if (fs.existsSync(targetDir)) {
+        fs.rmSync(targetDir, { recursive: true, force: true });
+      }
+      const candidateUrls = resolveZipUrl(gitUrl);
+      await downloadAndExtractZip(candidateUrls, targetDir);
+    }
+  } else {
+    console.log(`[Overlays] Git not detected. Fetching repository ZIP archive...`);
+    method = "zip_download";
+    const candidateUrls = resolveZipUrl(gitUrl);
+    await downloadAndExtractZip(candidateUrls, targetDir);
+  }
+
+  // Ensure index.html exists
+  let indexPath = path.join(targetDir, "index.html");
+  if (!fs.existsSync(indexPath)) {
+    const subdirs = ["dist", "public", "build", "overlay", "src"];
+    for (const sub of subdirs) {
+      const candidate = path.join(targetDir, sub, "index.html");
+      if (fs.existsSync(candidate)) {
+        copyRecursiveSync(path.join(targetDir, sub), targetDir);
+        break;
+      }
+    }
+  }
+
+  if (!fs.existsSync(indexPath)) {
+    fs.writeFileSync(
+      indexPath,
+      `<!DOCTYPE html><html><head><meta charset="utf-8"><title>${safeId}</title></head><body><h1>Overlay: ${safeId}</h1><p>Imported from ${gitUrl}</p></body></html>`,
+      "utf-8"
+    );
+  }
+
+  // Ensure overlay.json exists
+  const metaPath = path.join(targetDir, "overlay.json");
+  let meta: OverlayMeta;
+
+  if (fs.existsSync(metaPath)) {
+    try {
+      const parsed = JSON.parse(fs.readFileSync(metaPath, "utf-8"));
+      meta = {
+        id: safeId,
+        name: parsed.name || safeId,
+        description: parsed.description || `Imported from ${gitUrl}`,
+        version: parsed.version || "1.0.0",
+        author: parsed.author || "git",
+        category: parsed.category || "custom",
+        width: Number(parsed.width) || 480,
+        height: Number(parsed.height) || 160,
+        previewUrl: `/overlays/${safeId}/`,
+        isCustom: true,
+      };
+      fs.writeFileSync(metaPath, JSON.stringify(meta, null, 2), "utf-8");
+    } catch {
+      meta = {
+        id: safeId,
+        name: safeId.replace(/[-_]/g, " ").replace(/\b\w/g, (c) => c.toUpperCase()),
+        description: `Imported from ${gitUrl}`,
+        version: "1.0.0",
+        author: "git",
+        category: "custom",
+        width: 480,
+        height: 160,
+        previewUrl: `/overlays/${safeId}/`,
+        isCustom: true,
+      };
+      fs.writeFileSync(metaPath, JSON.stringify(meta, null, 2), "utf-8");
+    }
+  } else {
+    meta = {
+      id: safeId,
+      name: safeId.replace(/[-_]/g, " ").replace(/\b\w/g, (c) => c.toUpperCase()),
+      description: `Imported from ${gitUrl}`,
+      version: "1.0.0",
+      author: "git",
+      category: "custom",
+      width: 480,
+      height: 160,
+      previewUrl: `/overlays/${safeId}/`,
+      isCustom: true,
+    };
+    fs.writeFileSync(metaPath, JSON.stringify(meta, null, 2), "utf-8");
+  }
+
+  return {
+    success: true,
+    method,
+    overlay: meta,
+    path: targetDir,
+    hasGit,
+  };
 }
