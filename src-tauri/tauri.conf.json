@@ -1,7 +1,7 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
   "productName": "donate-socket",
-  "version": "0.1.8",
+  "version": "0.1.9",
   "identifier": "zip.kizuna.donate",
   "build": {
     "beforeDevCommand": "bun run dev",

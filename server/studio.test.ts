@@ -110,6 +110,8 @@ describe("Overlay Studio normalization & safety", () => {
       "javascript:alert(1)", "data:text/html,bad", "file:///tmp/widget", "ftp://example.test/widget",
       "https://user:secret@example.test/widget", "https://user@example.test/widget",
       "https://:secret@example.test/widget", "https://", "https://[bad", null, 42,
+      "http://169.254.169.254/latest/meta-data/", "http://metadata.google.internal/",
+      "http://127.0.0.1:3001/api/config", "http://localhost:3001/api/status",
     ];
     const result = normalizeStudioScene({ layers: [
       { id: "secure", overlayId: "", url: "https://example.test/widget?token=a%2Fb&mode=live#overlay", x: 12.7, width: 10 },

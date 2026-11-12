@@ -407,6 +407,20 @@ export const StudioTab: React.FC<StudioTabProps> = ({
       if ((url.protocol !== "http:" && url.protocol !== "https:") || url.username || url.password) {
         throw new Error("Use an HTTP or HTTPS URL without a username or password.");
       }
+      const host = url.hostname.toLowerCase();
+      if (
+        host === "169.254.169.254" ||
+        host.startsWith("169.254.") ||
+        host === "metadata.google.internal" ||
+        host.startsWith("fe80:")
+      ) {
+        throw new Error("Targeting cloud metadata services is forbidden.");
+      }
+      const port = url.port ? Number(url.port) : (url.protocol === "https:" ? 443 : 80);
+      const isLoopback = host === "localhost" || host === "127.0.0.1" || host === "::1";
+      if (isLoopback && (port === 3001 || port === Number(window.location.port))) {
+        throw new Error("External layer cannot target the application's own API port.");
+      }
       handleAddLayer({ id: "", name: externalName.trim() || url.hostname, width: 480, height: 160 }, url.href);
       setExternalUrl("");
       setExternalName("");

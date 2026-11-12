@@ -3,12 +3,45 @@ import path from "node:path";
 import process from "node:process";
 import YAML from "yaml";
 import type { AppConfig, StudioLayer, StudioProfile, StudioScene } from "./types.ts";
+import { PORT } from "./utils.ts";
 
 const DEFAULT_STUDIO_SCENE: StudioScene = {
   width: 1920,
   height: 1080,
   layers: [],
 };
+
+export function isValidExternalLayerUrl(rawUrl: string): boolean {
+  if (typeof rawUrl !== "string" || !/^https?:\/\//i.test(rawUrl)) return false;
+  try {
+    const parsed = new URL(rawUrl);
+    if (!["http:", "https:"].includes(parsed.protocol) || parsed.username || parsed.password) return false;
+    const hostname = parsed.hostname.toLowerCase();
+
+    // Block cloud metadata services and link-local addresses
+    if (
+      hostname === "169.254.169.254" ||
+      hostname === "169.254.169.253" ||
+      hostname === "metadata.google.internal" ||
+      hostname.startsWith("169.254.") ||
+      hostname === "[fd00:ec2::254]" ||
+      hostname.startsWith("fe80:")
+    ) {
+      return false;
+    }
+
+    // Block loopback targeting application own API port (prevents iframe sandbox escape)
+    const port = parsed.port ? Number(parsed.port) : (parsed.protocol === "https:" ? 443 : 80);
+    const isLoopback = hostname === "localhost" || hostname === "127.0.0.1" || hostname === "::1" || hostname === "[::1]";
+    if (isLoopback && (port === 3001 || port === PORT)) {
+      return false;
+    }
+
+    return true;
+  } catch {
+    return false;
+  }
+}
 
 export function normalizeStudioScene(raw: unknown): StudioScene {
   if (!raw || typeof raw !== "object" || Array.isArray(raw)) {
@@ -25,11 +58,9 @@ export function normalizeStudioScene(raw: unknown): StudioScene {
           let url: string | undefined;
           let overlayId = "";
           if (l.url !== undefined) {
-            if (typeof l.url !== "string" || !/^https?:\/\//i.test(l.url)) return [];
+            if (!isValidExternalLayerUrl(l.url)) return [];
             try {
-              const parsed = new URL(l.url);
-              if (!["http:", "https:"].includes(parsed.protocol) || parsed.username || parsed.password) return [];
-              url = parsed.href;
+              url = new URL(l.url).href;
             } catch {
               return [];
             }
