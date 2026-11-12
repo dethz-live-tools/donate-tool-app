@@ -62,3 +62,15 @@ Instead of managing multiple separate Browser Sources in OBS, **Overlay Studio**
 4. Drag widgets on the stage to move them, drag the bottom-right handle to resize, or fine-tune `X`, `Y`, `Width`, `Height`, `Scale`, `Opacity`, `Z-Order`, visibility, and lock state in the inspector.
 5. Click **COPY OBS STUDIO URL** (`http://127.0.0.1:3001/overlays/studio/`) and add **one** Browser Source in OBS matching your Studio canvas width and height.
 6. Layout edits sync live to OBS over Server-Sent Events (`/api/events`) without refreshing or interrupting active widget animations.
+
+### Workspace size and scene profiles
+
+- Use **COLLAPSE NAV** to reclaim sidebar width; the compact navigation keeps every page accessible.
+- Expand the Studio editor for a viewport-sized workspace, or expand the preview to hide the layer tools. Restore the workspace with its button or Escape.
+- Create a named profile from the current layout, then select it to edit its own canvas and layers.
+- Each profile has a stable OBS Browser Source URL: `http://127.0.0.1:3001/overlays/studio/?profile=<id>`. Select a profile and use the copy/open controls for its link.
+- Switching profiles in the editor does not switch existing OBS sources. Each profile link follows only that profile's saved changes.
+- The original master scene and `/overlays/studio/` link remain available. Profiles persist in `config.yaml` alongside the master scene.
+- Use **COPY EDITOR LINK** to share an editor URL with `?page=studio&profile=<id>`. Opening it selects Studio and loads that profile.
+- In **PROFILE LINK TOOLS**, paste an editor or OBS URL and choose **LOAD FROM URL**. This loads the matching profile saved on this server, not a remote layout.
+- To load an older saved profile, choose it in **PROFILE**, then click **LOAD PROFILE**. Selection alone does not change the current canvas.

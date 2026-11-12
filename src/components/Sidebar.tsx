@@ -1,4 +1,4 @@
-import React from "react";
+import React, { useState } from "react";
 import { SpotifyInfo, SpotifyTrack } from "../types";
 
 interface SidebarProps {
@@ -18,45 +18,65 @@ export const Sidebar: React.FC<SidebarProps> = ({
   spotify,
   track,
 }) => {
+  const [collapsed, setCollapsed] = useState(false);
   return (
-    <aside className="app-sidebar">
+    <aside className={`app-sidebar ${collapsed ? "sidebar-collapsed" : ""}`}>
+      <button
+        type="button"
+        className="btn btn-secondary sidebar-toggle"
+        aria-expanded={!collapsed}
+        aria-controls="sidebar-navigation"
+        aria-label={collapsed ? "Expand navigation" : "Collapse navigation"}
+        title={collapsed ? "Expand navigation" : "Collapse navigation"}
+        onClick={() => setCollapsed((value) => !value)}
+      >
+        {collapsed ? "☰" : "COLLAPSE NAV"}
+      </button>
       <div className="sidebar-brand">
         <h1 style={{ fontSize: "18px" }}>TIKTOK // DONATE</h1>
         <span className="header-subtitle">RAWBLOCK // CATPPUCCIN</span>
       </div>
 
-      <nav className="sidebar-nav">
+      <nav className="sidebar-nav" id="sidebar-navigation" aria-label="Main navigation">
         <button
           type="button"
           className={`sidebar-tab ${currentPage === "dashboard" ? "active" : ""}`}
           onClick={() => onSelectPage("dashboard")}
+          aria-label="Dashboard"
+          title="Dashboard"
         >
           <span>[ DASHBOARD ]</span>
-          <span>→</span>
+          <span aria-hidden="true">D</span>
         </button>
         <button
           type="button"
           className={`sidebar-tab ${currentPage === "config" ? "active" : ""}`}
           onClick={() => onSelectPage("config")}
+          aria-label="Configuration"
+          title="Configuration"
         >
           <span>[ CONFIGURATION ]</span>
-          <span>→</span>
+          <span aria-hidden="true">C</span>
         </button>
         <button
           type="button"
           className={`sidebar-tab ${currentPage === "overlays" ? "active" : ""}`}
           onClick={() => onSelectPage("overlays")}
+          aria-label="Overlays Market"
+          title="Overlays Market"
         >
           <span>[ OVERLAYS MARKET ]</span>
-          <span>→</span>
+          <span aria-hidden="true">O</span>
         </button>
         <button
           type="button"
           className={`sidebar-tab ${currentPage === "studio" ? "active" : ""}`}
           onClick={() => onSelectPage("studio")}
+          aria-label="Overlay Studio"
+          title="Overlay Studio"
         >
           <span>[ OVERLAY STUDIO ]</span>
-          <span>→</span>
+          <span aria-hidden="true">S</span>
         </button>
       </nav>
 

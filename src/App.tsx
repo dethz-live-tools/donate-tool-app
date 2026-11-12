@@ -31,7 +31,10 @@ async function openAuthorizeUrl(url: string) {
 }
 
 export default function App() {
-  const [currentPage, setCurrentPage] = useState<"dashboard" | "config" | "overlays" | "studio">("dashboard");
+  const [currentPage, setCurrentPage] = useState<"dashboard" | "config" | "overlays" | "studio">(() => {
+    const query = new URLSearchParams(window.location.search);
+    return query.get("page") === "studio" || query.has("profile") ? "studio" : "dashboard";
+  });
 
   // TikTok & Webhook state
   const [username, setUsername] = useState("");
@@ -580,7 +583,6 @@ export default function App() {
     }
   }
   async function handleSaveStudio(nextScene: StudioScene) {
-    setStudioScene(nextScene);
     try {
       const res = await fetch(`${API_BASE}/api/overlays/studio`, {
         method: "POST",
@@ -588,14 +590,14 @@ export default function App() {
         body: JSON.stringify({ studio: nextScene }),
       });
       const data = await res.json();
-      if (data.success && data.studio) {
-        setStudioScene(data.studio);
-      } else if (!data.success) {
-        setErrorMsg(`Failed to save studio layout: ${data.error || "Unknown error"}`);
+      if (!res.ok || !data.success || !data.studio) {
+        throw new Error(data.error || `Save failed (${res.status})`);
       }
+      setStudioScene(data.studio);
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : "Network error";
       setErrorMsg(`Error saving studio layout: ${msg}`);
+      throw err;
     }
   }
 

@@ -2,7 +2,7 @@ import fs from "node:fs";
 import path from "node:path";
 import process from "node:process";
 import YAML from "yaml";
-import type { AppConfig, StudioLayer, StudioScene } from "./types.ts";
+import type { AppConfig, StudioLayer, StudioProfile, StudioScene } from "./types.ts";
 
 const DEFAULT_STUDIO_SCENE: StudioScene = {
   width: 1920,
@@ -11,7 +11,7 @@ const DEFAULT_STUDIO_SCENE: StudioScene = {
 };
 
 export function normalizeStudioScene(raw: unknown): StudioScene {
-  if (!raw || typeof raw !== "object") {
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) {
     return { ...DEFAULT_STUDIO_SCENE, layers: [] };
   }
   const obj = raw as Record<string, unknown>;
@@ -38,6 +38,22 @@ export function normalizeStudioScene(raw: unknown): StudioScene {
         }))
     : [];
   return { width, height, layers };
+}
+
+function normalizeStudioProfiles(raw: unknown): StudioProfile[] {
+  if (!Array.isArray(raw)) return [];
+  return raw
+    .filter((profile): profile is StudioProfile =>
+      Boolean(profile && typeof profile === "object" &&
+        typeof profile.id === "string" && profile.id.trim() &&
+        typeof profile.name === "string" && profile.name.trim() && profile.name.trim().length <= 100 &&
+        profile.scene && typeof profile.scene === "object" && !Array.isArray(profile.scene))
+    )
+    .map((profile) => ({
+      id: profile.id,
+      name: profile.name.trim(),
+      scene: normalizeStudioScene(profile.scene),
+    }));
 }
 
 export const CONFIG_FILE = path.resolve(process.cwd(), "config.yaml");
@@ -70,6 +86,7 @@ export function loadConfig(): AppConfig {
             minimizedBoxes: parsed.ui?.minimized_boxes || {},
           },
           studio: normalizeStudioScene(parsed.studio),
+          studioProfiles: normalizeStudioProfiles(parsed.studioProfiles),
         };
       }
     } else if (fs.existsSync(LEGACY_CONFIG_FILE)) {
@@ -96,6 +113,7 @@ export function loadConfig(): AppConfig {
           minimizedBoxes: {},
         },
         studio: { ...DEFAULT_STUDIO_SCENE, layers: [] },
+        studioProfiles: [],
       };
       saveConfig(migrated);
       return migrated;
@@ -124,6 +142,7 @@ export function loadConfig(): AppConfig {
       minimizedBoxes: {},
     },
     studio: { ...DEFAULT_STUDIO_SCENE, layers: [] },
+    studioProfiles: [],
   };
 }
 
@@ -159,6 +178,7 @@ export function saveConfig(updates: Partial<AppConfig>) {
         minimizedBoxes: {},
       },
       studio: { ...DEFAULT_STUDIO_SCENE, layers: [] },
+      studioProfiles: [],
     };
 
     const sendTts = updates.sendTtsWebhook !== undefined
@@ -195,6 +215,7 @@ export function saveConfig(updates: Partial<AppConfig>) {
       studio: updates.studio !== undefined
         ? normalizeStudioScene(updates.studio)
         : normalizeStudioScene(existing.studio),
+      studioProfiles: normalizeStudioProfiles(updates.studioProfiles ?? existing.studioProfiles),
     };
 
     const yamlData = {
@@ -224,6 +245,7 @@ export function saveConfig(updates: Partial<AppConfig>) {
         minimized_boxes: merged.ui?.minimizedBoxes || {},
       },
       studio: merged.studio || DEFAULT_STUDIO_SCENE,
+      studioProfiles: merged.studioProfiles,
     };
 
     const serialized = YAML.stringify(yamlData, { indent: 2 });
@@ -232,7 +254,9 @@ export function saveConfig(updates: Partial<AppConfig>) {
       flag: "w",
     });
     console.log(`[config] ${exists ? "Overwrote existing" : "Created and wrote"} ${CONFIG_FILE}`);
+    return true;
   } catch (e) {
     console.error("[config] Failed to save config.yaml:", e);
+    return false;
   }
 }

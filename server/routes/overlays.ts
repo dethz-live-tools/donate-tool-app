@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import fs from "node:fs";
 import type http from "node:http";
 import path from "node:path";
@@ -50,6 +51,7 @@ const STUDIO_OBS_HTML = `<!DOCTYPE html>
   <script>
     const stage = document.getElementById("stage");
     const frameMap = new Map();
+    const profileId = new URLSearchParams(window.location.search).get("profile");
     let sceneWidth = 1920;
     let sceneHeight = 1080;
 
@@ -115,7 +117,7 @@ const STUDIO_OBS_HTML = `<!DOCTYPE html>
       }
     }
 
-    fetch("/api/overlays/studio")
+    fetch("/api/overlays/studio" + (profileId === null ? "" : "?profile=" + encodeURIComponent(profileId)))
       .then((r) => r.json())
       .then((d) => { if (d && d.studio) applyScene(d.studio); })
       .catch(() => {});
@@ -125,8 +127,11 @@ const STUDIO_OBS_HTML = `<!DOCTYPE html>
       es.onmessage = (ev) => {
         try {
           const data = JSON.parse(ev.data);
-          if (data && data.config && data.config.studio) {
-            applyScene(data.config.studio);
+          if (data && data.config) {
+            const studio = profileId === null
+              ? data.config.studio
+              : data.config.studioProfiles?.find((profile) => profile.id === profileId)?.scene;
+            if (studio) applyScene(studio);
           }
         } catch {}
       };
@@ -165,13 +170,18 @@ export async function handleOverlayRoutes(
   res: http.ServerResponse,
   url: URL
 ): Promise<boolean> {
-  // 0. Master OBS Studio Composed Scene Page (/overlays/studio or /overlays/studio/)
+  // 0. OBS Studio Composed Scene Page (/overlays/studio or /overlays/studio/)
   if (
     (url.pathname === "/overlays/studio" ||
       url.pathname === "/overlays/studio/" ||
       url.pathname === "/overlays/studio/index.html") &&
     (req.method === "GET" || req.method === "HEAD")
   ) {
+    const profileId = url.searchParams.get("profile");
+    if (profileId !== null && !loadConfig().studioProfiles?.some((profile) => profile.id === profileId)) {
+      sendJson(res, 404, { success: false, error: "Studio profile not found" });
+      return true;
+    }
     const buf = Buffer.from(STUDIO_OBS_HTML, "utf-8");
     res.writeHead(200, {
       "Content-Type": "text/html; charset=utf-8",
@@ -187,23 +197,79 @@ export async function handleOverlayRoutes(
     return true;
   }
 
+  if (url.pathname === "/api/overlays/studio/profiles" || url.pathname === "/api/overlays/studio/profiles/") {
+    if (req.method === "GET") {
+      sendJson(res, 200, { success: true, profiles: loadConfig().studioProfiles ?? [] });
+      return true;
+    }
+    if (req.method === "POST") {
+      try {
+        const body = await parseJsonBody(req);
+        const name = typeof body?.name === "string" ? body.name.trim() : "";
+        if (!name || name.length > 100) {
+          sendJson(res, 400, { success: false, error: "Profile name must be 1–100 characters" });
+          return true;
+        }
+        if (!body.scene || typeof body.scene !== "object" || Array.isArray(body.scene)) {
+          sendJson(res, 400, { success: false, error: "Profile scene must be an object" });
+          return true;
+        }
+        const profile = { id: randomUUID(), name, scene: normalizeStudioScene(body.scene) };
+        const profiles = [...(loadConfig().studioProfiles ?? []), profile];
+        if (!saveConfig({ studioProfiles: profiles })) {
+          sendJson(res, 500, { success: false, error: "Failed to save studio profile" });
+          return true;
+        }
+        state.config = loadConfig();
+        broadcastState();
+        sendJson(res, 200, { success: true, profile, profiles: state.config.studioProfiles });
+      } catch (err: unknown) {
+        const message = err instanceof Error ? err.message : "Failed to create studio profile";
+        sendJson(res, 400, { success: false, error: message });
+      }
+      return true;
+    }
+    sendJson(res, 405, { success: false, error: "Method not allowed" });
+    return true;
+  }
+
   // 0b. API: Get or Save Studio Scene Layout
   if (url.pathname === "/api/overlays/studio" || url.pathname === "/api/overlays/studio/") {
+    const profileId = url.searchParams.get("profile");
+    const config = loadConfig();
+    const profile = profileId === null ? undefined : config.studioProfiles?.find((item) => item.id === profileId);
+    if (profileId !== null && !profile) {
+      sendJson(res, 404, { success: false, error: "Studio profile not found" });
+      return true;
+    }
     if (req.method === "GET") {
-      const config = loadConfig();
-      const studio = normalizeStudioScene(config.studio);
+      const studio = normalizeStudioScene(profile ? profile.scene : config.studio);
       sendJson(res, 200, { success: true, studio });
       return true;
     }
     if (req.method === "POST" || req.method === "PUT") {
       try {
         const body = await parseJsonBody(req);
-        const rawStudio = body && typeof body === "object" && "studio" in body ? body.studio : body;
+        const rawStudio = body && typeof body === "object" && "studio" in body
+          ? body.studio
+          : profileId === null ? body : undefined;
+        if (!rawStudio || typeof rawStudio !== "object" || Array.isArray(rawStudio)) {
+          sendJson(res, 400, { success: false, error: "Studio scene must be an object" });
+          return true;
+        }
         const normalized = normalizeStudioScene(rawStudio);
-        saveConfig({ studio: normalized });
+        const updates = profileId === null
+          ? { studio: normalized }
+          : { studioProfiles: (loadConfig().studioProfiles ?? []).map((item) =>
+              item.id === profileId ? { ...item, scene: normalized } : item
+            ) };
+        if (!saveConfig(updates)) {
+          sendJson(res, 500, { success: false, error: "Failed to save studio scene" });
+          return true;
+        }
         state.config = loadConfig();
         broadcastState();
-        sendJson(res, 200, { success: true, studio: state.config.studio });
+        sendJson(res, 200, { success: true, studio: normalized });
       } catch (err: unknown) {
         const message = err instanceof Error ? err.message : "Failed to save studio scene";
         sendJson(res, 400, { success: false, error: message });

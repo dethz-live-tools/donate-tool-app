@@ -19,6 +19,7 @@ export interface AppConfig {
     minimizedBoxes?: Record<string, boolean>;
   };
   studio?: StudioScene;
+  studioProfiles?: StudioProfile[];
 }
 
 export interface TikTokGiftPayload {
@@ -236,4 +237,10 @@ export interface StudioScene {
   width: number;
   height: number;
   layers: StudioLayer[];
+}
+
+export interface StudioProfile {
+  id: string;
+  name: string;
+  scene: StudioScene;
 }

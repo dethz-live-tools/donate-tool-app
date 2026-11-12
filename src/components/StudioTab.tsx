@@ -15,6 +15,12 @@ const PRESET_SIZES: Array<{ label: string; width: number; height: number }> = [
   { label: "TIKTOK VERTICAL (1080×1920)", width: 1080, height: 1920 },
 ];
 
+interface StudioProfile {
+  id: string;
+  name: string;
+  scene: StudioScene;
+}
+
 type DragMode = "move" | "resize";
 
 interface DragState {
@@ -37,19 +43,80 @@ export const StudioTab: React.FC<StudioTabProps> = ({
 }) => {
   const [scene, setScene] = useState<StudioScene>(studio);
   const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [profiles, setProfiles] = useState<StudioProfile[]>([]);
+  const [profileId, setProfileId] = useState("");
+  const [profileToLoad, setProfileToLoad] = useState("");
+  const [profileName, setProfileName] = useState("");
+  const [profileUrl, setProfileUrl] = useState("");
+  const [profilesError, setProfilesError] = useState("");
+  const [error, setError] = useState("");
+  const [busy, setBusy] = useState(false);
   const [snapGrid, setSnapGrid] = useState<boolean>(true);
   const [saving, setSaving] = useState<boolean>(false);
   const [copied, setCopied] = useState<boolean>(false);
-  const [viewportWidth, setViewportWidth] = useState<number>(760);
+  const [expanded, setExpanded] = useState(false);
+  const [previewExpanded, setPreviewExpanded] = useState(false);
+  const [viewport, setViewport] = useState({ width: 760, height: 520 });
 
   const stageWrapRef = useRef<HTMLDivElement | null>(null);
+  const stageOuterRef = useRef<HTMLDivElement | null>(null);
   const dragRef = useRef<DragState | null>(null);
   const sceneRef = useRef<StudioScene>(scene);
-  sceneRef.current = scene;
+  const masterRef = useRef(studio);
+  const onSaveStudioRef = useRef(onSaveStudio);
+  const selectionRef = useRef({ id: "" });
+  const mountedRef = useRef(true);
+  const busyRef = useRef(false);
+  const dirtyRef = useRef(false);
   const saveTimerRef = useRef<number | undefined>(undefined);
+  const copyTimerRef = useRef<number | undefined>(undefined);
+  const pendingSaveRef = useRef<StudioScene | null>(null);
+  const saveChainRef = useRef<Promise<boolean>>(Promise.resolve(true));
+  const saveSequenceRef = useRef(0);
+  const editVersionRef = useRef(0);
+  const profilesVersionRef = useRef(0);
+  const requestRef = useRef<AbortController | null>(null);
+  const saveRequestRef = useRef<AbortController | null>(null);
+  sceneRef.current = scene;
+  masterRef.current = studio;
+  onSaveStudioRef.current = onSaveStudio;
 
   useEffect(() => {
-    if (!dragRef.current) {
+    mountedRef.current = true;
+    const controller = new AbortController();
+    const profilesVersion = profilesVersionRef.current;
+    void (async () => {
+      try {
+        const response = await fetch(`${apiBase}/api/overlays/studio/profiles`, { signal: controller.signal });
+        const data = await response.json();
+        if (!response.ok || !data.success || !Array.isArray(data.profiles)) {
+          throw new Error(data.error || `Could not load profiles (${response.status})`);
+        }
+        if (!controller.signal.aborted && profilesVersion === profilesVersionRef.current) {
+          setProfiles(data.profiles);
+          const requestedId = new URLSearchParams(window.location.search).get("profile");
+          if (requestedId) await changeProfile(requestedId);
+        }
+      } catch (err) {
+        if (!controller.signal.aborted && profilesVersion === profilesVersionRef.current) setProfilesError(err instanceof Error ? err.message : "Could not load profiles");
+      }
+    })();
+    return () => {
+      mountedRef.current = false;
+      selectionRef.current = { id: selectionRef.current.id };
+      window.clearTimeout(saveTimerRef.current);
+      window.clearTimeout(copyTimerRef.current);
+      pendingSaveRef.current = null;
+      dragRef.current = null;
+      controller.abort();
+      requestRef.current?.abort();
+      saveRequestRef.current?.abort();
+    };
+  }, [apiBase]);
+
+  useEffect(() => {
+    if (!selectionRef.current.id && !dragRef.current && !dirtyRef.current && !busyRef.current) {
+      sceneRef.current = studio;
       setScene(studio);
     }
   }, [studio]);
@@ -59,44 +126,179 @@ export const StudioTab: React.FC<StudioTabProps> = ({
     if (!el) return;
     const updateSize = () => {
       const rect = el.getBoundingClientRect();
-      if (rect.width > 120) {
-        setViewportWidth(Math.floor(rect.width - 28));
-      }
+      const top = stageOuterRef.current?.getBoundingClientRect().top ?? rect.top;
+      setViewport({
+        width: Math.max(1, Math.floor(rect.width - 28)),
+        height: Math.max(1, Math.floor((window.visualViewport?.height ?? window.innerHeight) - top - 30)),
+      });
     };
     updateSize();
     const ro = new ResizeObserver(updateSize);
     ro.observe(el);
-    return () => ro.disconnect();
+    window.addEventListener("resize", updateSize);
+    window.visualViewport?.addEventListener("resize", updateSize);
+    return () => {
+      ro.disconnect();
+      window.removeEventListener("resize", updateSize);
+      window.visualViewport?.removeEventListener("resize", updateSize);
+    };
+  }, [expanded, previewExpanded]);
+
+  useEffect(() => {
+    const restore = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        setExpanded(false);
+        setPreviewExpanded(false);
+      }
+    };
+    window.addEventListener("keydown", restore);
+    return () => window.removeEventListener("keydown", restore);
   }, []);
 
-  const maxStageHeight = scene.height > scene.width ? 680 : 520;
+  const isExpanded = expanded || previewExpanded;
+  const maxStageHeight = isExpanded ? viewport.height : scene.height > scene.width ? 680 : 520;
   const previewScale = Math.min(
     1,
-    viewportWidth / Math.max(1, scene.width),
+    viewport.width / Math.max(1, scene.width),
     maxStageHeight / Math.max(1, scene.height)
   );
 
-  function scheduleSave(next: StudioScene) {
-    setScene(next);
-    window.clearTimeout(saveTimerRef.current);
-    saveTimerRef.current = window.setTimeout(async () => {
+  function persistScene(next: StudioScene) {
+    const selection = selectionRef.current;
+    const sequence = ++saveSequenceRef.current;
+    const editVersion = editVersionRef.current;
+    const result = saveChainRef.current.then(async () => {
+      if (!mountedRef.current || selectionRef.current !== selection) return false;
       setSaving(true);
+      setError("");
       try {
-        await onSaveStudio(next);
+        if (selection.id) {
+          const controller = new AbortController();
+          saveRequestRef.current = controller;
+          const response = await fetch(`${apiBase}/api/overlays/studio?profile=${encodeURIComponent(selection.id)}`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ studio: next }),
+            signal: controller.signal,
+          });
+          const data = await response.json();
+          if (!response.ok || !data.success) throw new Error(data.error || `Could not save profile (${response.status})`);
+        } else {
+          await onSaveStudioRef.current(next);
+        }
+        if (mountedRef.current && selectionRef.current === selection && sequence === saveSequenceRef.current && editVersion === editVersionRef.current && !pendingSaveRef.current) {
+          dirtyRef.current = false;
+        }
+        return true;
+      } catch (err) {
+        if (mountedRef.current && selectionRef.current === selection) {
+          setError(err instanceof Error ? err.message : "Could not save scene");
+        }
+        return false;
       } finally {
-        setSaving(false);
+        if (mountedRef.current && selectionRef.current === selection && sequence === saveSequenceRef.current) {
+          setSaving(Boolean(pendingSaveRef.current));
+        }
       }
+    });
+    saveChainRef.current = result;
+    return result;
+  }
+
+  function scheduleSave(next: StudioScene) {
+    if (busyRef.current) return;
+    sceneRef.current = next;
+    setScene(next);
+    dirtyRef.current = true;
+    editVersionRef.current++;
+    pendingSaveRef.current = next;
+    setSaving(true);
+    window.clearTimeout(saveTimerRef.current);
+    saveTimerRef.current = window.setTimeout(() => {
+      pendingSaveRef.current = null;
+      void persistScene(next);
     }, 280);
   }
 
-  async function saveImmediate(next: StudioScene) {
+  function saveImmediate(next: StudioScene) {
+    if (busyRef.current) return Promise.resolve(false);
     window.clearTimeout(saveTimerRef.current);
+    pendingSaveRef.current = null;
+    sceneRef.current = next;
     setScene(next);
-    setSaving(true);
+    dirtyRef.current = true;
+    editVersionRef.current++;
+    return persistScene(next);
+  }
+
+  async function changeProfile(id: string, create = false) {
+    if (busyRef.current || (create && !profileName.trim())) return;
+    busyRef.current = true;
+    setBusy(true);
+    setError("");
+    dragRef.current = null;
+    window.clearTimeout(saveTimerRef.current);
+    const pending = pendingSaveRef.current;
+    pendingSaveRef.current = null;
+    const controller = new AbortController();
+    requestRef.current?.abort();
+    requestRef.current = controller;
     try {
-      await onSaveStudio(next);
-    } finally {
+      if (pending) {
+        if (!await persistScene(pending)) return;
+      } else {
+        await saveChainRef.current;
+      }
+      if (dirtyRef.current && !await persistScene(sceneRef.current)) return;
+      if (!mountedRef.current || controller.signal.aborted) return;
+      let next = masterRef.current;
+      let nextId = id;
+      if (create || id) {
+        const response = await fetch(create
+          ? `${apiBase}/api/overlays/studio/profiles`
+          : `${apiBase}/api/overlays/studio?profile=${encodeURIComponent(id)}`, {
+          ...(create ? {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ name: profileName.trim(), scene: sceneRef.current }),
+          } : {}),
+          signal: controller.signal,
+        });
+        const data = await response.json();
+        if (!response.ok || !data.success || (create ? !data.profile?.id || !data.profile.scene || !Array.isArray(data.profiles) : !data.studio)) {
+          throw new Error(data.error || `Could not ${create ? "create" : "load"} profile (${response.status})`);
+        }
+        if (!mountedRef.current || controller.signal.aborted) return;
+        next = create ? data.profile.scene : data.studio;
+        if (create) {
+          nextId = data.profile.id;
+          profilesVersionRef.current++;
+          setProfiles(data.profiles);
+          setProfilesError("");
+          setProfileName("");
+        }
+      }
+      selectionRef.current = { id: nextId };
+      setProfileId(nextId);
+      setProfileToLoad(nextId);
+      const editorUrl = new URL(window.location.href);
+      editorUrl.searchParams.set("page", "studio");
+      if (nextId) editorUrl.searchParams.set("profile", nextId);
+      else editorUrl.searchParams.delete("profile");
+      window.history.replaceState(null, "", editorUrl);
+      sceneRef.current = next;
+      setScene(next);
+      setSelectedId(null);
+      setCopied(false);
+      dirtyRef.current = false;
       setSaving(false);
+    } catch (err) {
+      if (mountedRef.current && !controller.signal.aborted) setError(err instanceof Error ? err.message : "Could not change profile");
+    } finally {
+      if (mountedRef.current && !controller.signal.aborted) {
+        busyRef.current = false;
+        setBusy(false);
+      }
     }
   }
 
@@ -127,7 +329,10 @@ export const StudioTab: React.FC<StudioTabProps> = ({
           height: Math.max(30, snap(d.origH + dy)),
         };
       });
-      setScene({ ...cur, layers: nextLayers });
+      dirtyRef.current = true;
+      editVersionRef.current++;
+      sceneRef.current = { ...cur, layers: nextLayers };
+      setScene(sceneRef.current);
     }
 
     function onPointerUp() {
@@ -147,6 +352,7 @@ export const StudioTab: React.FC<StudioTabProps> = ({
   function startDrag(e: React.PointerEvent, layer: StudioLayer, mode: DragMode) {
     e.stopPropagation();
     e.preventDefault();
+    if (busyRef.current) return;
     setSelectedId(layer.id);
     if (layer.locked) return;
     dragRef.current = {
@@ -242,15 +448,35 @@ export const StudioTab: React.FC<StudioTabProps> = ({
     updateLayer(selectedLayer.id, { x, y });
   }
 
-  const obsStudioUrl = `${apiBase}/overlays/studio/`;
+  const obsStudioUrl = `${apiBase}/overlays/studio/${profileId ? `?profile=${encodeURIComponent(profileId)}` : ""}`;
+  const editorStudioUrl = new URL(window.location.href);
+  editorStudioUrl.searchParams.set("page", "studio");
+  if (profileId) editorStudioUrl.searchParams.set("profile", profileId);
+  else editorStudioUrl.searchParams.delete("profile");
+
+  function loadProfileUrl(event: React.FormEvent) {
+    event.preventDefault();
+    try {
+      const url = new URL(profileUrl.trim(), window.location.href);
+      if (url.protocol !== "http:" && url.protocol !== "https:") throw new Error("Use an HTTP or HTTPS Studio link.");
+      const id = url.searchParams.get("profile");
+      if (!id) throw new Error("Studio link must include ?profile=<id>.");
+      void changeProfile(id);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Invalid Studio link.");
+    }
+  }
 
   async function handleCopyObsUrl() {
+    const selection = selectionRef.current;
     try {
       await navigator.clipboard.writeText(obsStudioUrl);
+      if (!mountedRef.current || selectionRef.current !== selection) return;
       setCopied(true);
-      setTimeout(() => setCopied(false), 2000);
+      window.clearTimeout(copyTimerRef.current);
+      copyTimerRef.current = window.setTimeout(() => setCopied(false), 2000);
     } catch {
-      prompt("Copy OBS Master Studio URL:", obsStudioUrl);
+      if (mountedRef.current && selectionRef.current === selection) prompt("Copy OBS Studio URL:", obsStudioUrl);
     }
   }
 
@@ -258,7 +484,7 @@ export const StudioTab: React.FC<StudioTabProps> = ({
   const selectedLayer = scene.layers.find((l) => l.id === selectedId) || null;
 
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: "16px" }}>
+    <div className={`${isExpanded ? "studio-expanded" : ""} ${previewExpanded ? "studio-preview-expanded" : ""}`} style={{ display: "flex", flexDirection: "column", gap: "16px" }}>
       {/* Studio Header & OBS Master URL */}
       <section className="raw-card elevated">
         <div className="card-title">
@@ -269,9 +495,21 @@ export const StudioTab: React.FC<StudioTabProps> = ({
             </span>
           </div>
           <div style={{ display: "flex", gap: "8px", alignItems: "center", flexWrap: "wrap" }}>
-            <span className="mono-font" style={{ fontSize: "11px", color: saving ? "var(--status-warning)" : "var(--status-success)" }}>
-              {saving ? "[ SAVING... ]" : "[ LIVE SYNCED ]"}
+            <span className="mono-font" style={{ fontSize: "11px", color: error || profilesError ? "var(--status-error)" : saving || busy ? "var(--status-warning)" : "var(--status-success)" }}>
+              {error || profilesError ? "[ ERROR ]" : busy ? "[ LOADING... ]" : saving ? "[ SAVING... ]" : "[ READY ]"}
             </span>
+            <button
+              type="button"
+              className="btn btn-secondary"
+              style={{ padding: "6px 12px", fontSize: "11px" }}
+              aria-pressed={isExpanded}
+              onClick={() => {
+                setExpanded(!isExpanded);
+                setPreviewExpanded(false);
+              }}
+            >
+              {isExpanded ? "RESTORE EDITOR" : "EXPAND EDITOR"}
+            </button>
             <a
               href={obsStudioUrl}
               target="_blank"
@@ -287,10 +525,52 @@ export const StudioTab: React.FC<StudioTabProps> = ({
               style={{ padding: "6px 14px", fontSize: "11px" }}
               onClick={handleCopyObsUrl}
             >
-              {copied ? "✓ COPIED MASTER URL" : "COPY OBS STUDIO URL"}
+              {copied ? "✓ COPIED URL" : "COPY OBS STUDIO URL"}
             </button>
           </div>
         </div>
+
+        <form
+          style={{ display: "flex", gap: "8px", flexWrap: "wrap", alignItems: "center", marginTop: "12px" }}
+          onSubmit={(event) => {
+            event.preventDefault();
+            void changeProfile("", true);
+          }}
+        >
+          <label className="mono-font" style={{ fontSize: "11px" }}>
+            PROFILE:{" "}
+            <select
+              className="raw-input"
+              value={profileToLoad}
+              disabled={busy}
+              onChange={(event) => setProfileToLoad(event.target.value)}
+            >
+              <option value="">MASTER STUDIO</option>
+              {profiles.map((profile) => <option key={profile.id} value={profile.id}>{profile.name}</option>)}
+            </select>
+          </label>
+          <button type="button" className="btn btn-secondary" disabled={busy} onClick={() => void changeProfile(profileToLoad)}>
+            LOAD PROFILE
+          </button>
+          <input
+            className="raw-input"
+            aria-label="New profile name"
+            placeholder="New profile name"
+            value={profileName}
+            maxLength={100}
+            disabled={busy}
+            onChange={(event) => setProfileName(event.target.value)}
+          />
+          <button type="submit" className="btn btn-secondary" disabled={busy || !profileName.trim()}>
+            SAVE AS NEW PROFILE
+          </button>
+          {error && dirtyRef.current && <button type="button" className="btn btn-secondary" disabled={busy} onClick={() => void saveImmediate(sceneRef.current)}>RETRY SAVE</button>}
+        </form>
+        {(error || profilesError) && (
+          <p role="alert" className="mono-font" style={{ color: "var(--status-error)", fontSize: "12px", marginTop: "10px" }}>
+            {[error, profilesError].filter(Boolean).join(" — ")}
+          </p>
+        )}
 
         <div className="obs-url-box" style={{ marginTop: "8px" }}>
           <span className="obs-url-text">
@@ -304,6 +584,28 @@ export const StudioTab: React.FC<StudioTabProps> = ({
             {copied ? "✓ COPIED" : "COPY URL"}
           </button>
         </div>
+
+        <section aria-label="Profile link tools" style={{ marginTop: "12px" }}>
+          <h3 style={{ fontSize: "13px", marginBottom: "8px" }}>PROFILE LINK TOOLS</h3>
+          <form onSubmit={loadProfileUrl} style={{ display: "flex", gap: "8px", flexWrap: "wrap" }}>
+            <input
+              className="raw-input"
+              aria-label="Studio profile URL"
+              placeholder="Paste Studio or OBS link with ?profile=..."
+              value={profileUrl}
+              onChange={(event) => setProfileUrl(event.target.value)}
+              style={{ flex: "1 1 240px", minWidth: 0 }}
+              disabled={busy}
+              required
+            />
+            <button type="submit" className="btn btn-secondary" disabled={busy || !profileUrl.trim()}>LOAD FROM URL</button>
+            <button type="button" className="btn btn-secondary" onClick={async () => {
+              try { await navigator.clipboard.writeText(editorStudioUrl.href); }
+              catch { prompt("Copy Studio editor URL:", editorStudioUrl.href); }
+            }}>COPY EDITOR LINK</button>
+          </form>
+          <p className="mono-font" style={{ fontSize: "11px", marginTop: "6px" }}>Loads a saved profile from this server; does not import remote layouts.</p>
+        </section>
 
         {/* Canvas Resolution & Grid Controls */}
         <div className="studio-toolbar-row">
@@ -363,17 +665,30 @@ export const StudioTab: React.FC<StudioTabProps> = ({
       <div className="studio-workspace">
         {/* Visual Canvas Stage */}
         <div className="raw-card studio-stage-panel" ref={stageWrapRef} onClick={() => setSelectedId(null)}>
-          <div style={{ display: "flex", justifyContent: "space-between", marginBottom: "10px", alignItems: "center" }}>
+          <div style={{ display: "flex", flexWrap: "wrap", gap: "8px", justifyContent: "space-between", marginBottom: "10px", alignItems: "center" }}>
             <span className="mono-font" style={{ fontSize: "11px", color: "var(--ctp-subtext0)" }}>
               STAGE: {scene.width}×{scene.height}PX ({Math.round(previewScale * 100)}% ZOOM) — DRAG TO MOVE, CORNER TO RESIZE
             </span>
             <span className="mono-font" style={{ fontSize: "11px", color: "var(--accent-primary)" }}>
               {scene.layers.length} LAYER{scene.layers.length === 1 ? "" : "S"}
             </span>
+            <button
+              type="button"
+              className="btn btn-secondary"
+              style={{ padding: "4px 8px", fontSize: "11px", flexShrink: 0 }}
+              aria-pressed={previewExpanded}
+              onClick={(event) => {
+                event.stopPropagation();
+                setPreviewExpanded(!previewExpanded);
+              }}
+            >
+              {previewExpanded ? "RESTORE PREVIEW" : "EXPAND PREVIEW"}
+            </button>
           </div>
 
           <div
             className="studio-stage-outer"
+            ref={stageOuterRef}
             style={{
               width: `${Math.round(scene.width * previewScale)}px`,
               height: `${Math.round(scene.height * previewScale)}px`,
