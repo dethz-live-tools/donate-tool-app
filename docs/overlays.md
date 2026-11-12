@@ -49,3 +49,16 @@ You can scaffold and host custom HTML/CSS widgets directly:
 2. Enter a name (e.g. `My Retro Music Widget`), select category, and specify target width & height.
 3. The server generates a new folder at `overlays/<id>/` with starter `index.html` and `overlay.json`.
 4. Edit the files using your favorite code editor. Custom overlays automatically hot-reload when modified!
+
+---
+
+## 5. Overlay Studio (Merging & Rearranging Multiple Overlays)
+
+Instead of managing multiple separate Browser Sources in OBS, **Overlay Studio** lets you combine and position any number of installed or custom overlays onto a single unified scene:
+
+1. Open the **[ OVERLAY STUDIO ]** tab in the sidebar (or click **OPEN STUDIO COMPOSER** inside Overlays Market).
+2. Choose a canvas resolution preset (`1920×1080` Landscape, `1280×720` Landscape, `1080×1920` TikTok Vertical) or enter custom dimensions.
+3. Click **+ ADD** next to any installed overlay in the right panel to place it on the stage.
+4. Drag widgets on the stage to move them, drag the bottom-right handle to resize, or fine-tune `X`, `Y`, `Width`, `Height`, `Scale`, `Opacity`, `Z-Order`, visibility, and lock state in the inspector.
+5. Click **COPY OBS STUDIO URL** (`http://127.0.0.1:3001/overlays/studio/`) and add **one** Browser Source in OBS matching your Studio canvas width and height.
+6. Layout edits sync live to OBS over Server-Sent Events (`/api/events`) without refreshing or interrupting active widget animations.

@@ -10,12 +10,14 @@ import {
   SpotifyDevice,
   SpotifyInfo,
   SpotifySearchResult,
+  StudioScene,
   TikTokChatMessage,
 } from "./types";
 import { Sidebar } from "./components/Sidebar";
 import { DashboardTab } from "./components/DashboardTab";
 import { ConfigTab } from "./components/ConfigTab";
 import { OverlaysTab } from "./components/OverlaysTab";
+import { StudioTab } from "./components/StudioTab";
 
 const API_BASE = "http://127.0.0.1:3001";
 
@@ -29,7 +31,7 @@ async function openAuthorizeUrl(url: string) {
 }
 
 export default function App() {
-  const [currentPage, setCurrentPage] = useState<"dashboard" | "config" | "overlays">("dashboard");
+  const [currentPage, setCurrentPage] = useState<"dashboard" | "config" | "overlays" | "studio">("dashboard");
 
   // TikTok & Webhook state
   const [username, setUsername] = useState("");
@@ -68,6 +70,11 @@ export default function App() {
   const [installedOverlays, setInstalledOverlays] = useState<OverlayMeta[]>([]);
   const [marketCatalog, setMarketCatalog] = useState<OverlayMarketItem[]>([]);
   const [loadingOverlays, setLoadingOverlays] = useState(false);
+  const [studioScene, setStudioScene] = useState<StudioScene>({
+    width: 1920,
+    height: 1080,
+    layers: [],
+  });
 
   const eventSourceRef = useRef<EventSource | null>(null);
 
@@ -90,6 +97,9 @@ export default function App() {
             setSpotify(data.spotify);
             if (data.spotify.clientId) setSpotifyClientId(data.spotify.clientId);
           }
+          if (data.config?.studio) {
+            setStudioScene(data.config.studio);
+          }
         }
       } catch {
         try {
@@ -107,6 +117,9 @@ export default function App() {
             if (data.spotify) {
               setSpotify(data.spotify);
               if (data.spotify.clientId) setSpotifyClientId(data.spotify.clientId);
+            }
+            if (data.config?.studio) {
+              setStudioScene(data.config.studio);
             }
           }
         } catch {
@@ -136,6 +149,9 @@ export default function App() {
             }
             if (data.spotify) {
               setSpotify(data.spotify);
+            }
+            if (data.config?.studio) {
+              setStudioScene(data.config.studio);
             }
           } catch (e) {
             console.error("SSE parse error:", e);
@@ -174,7 +190,7 @@ export default function App() {
   }, []);
 
   useEffect(() => {
-    if (currentPage === "overlays") {
+    if (currentPage === "overlays" || currentPage === "studio") {
       fetchOverlays();
     }
   }, [currentPage]);
@@ -563,6 +579,26 @@ export default function App() {
       setErrorMsg(`Error deleting overlay: ${err.message}`);
     }
   }
+  async function handleSaveStudio(nextScene: StudioScene) {
+    setStudioScene(nextScene);
+    try {
+      const res = await fetch(`${API_BASE}/api/overlays/studio`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ studio: nextScene }),
+      });
+      const data = await res.json();
+      if (data.success && data.studio) {
+        setStudioScene(data.studio);
+      } else if (!data.success) {
+        setErrorMsg(`Failed to save studio layout: ${data.error || "Unknown error"}`);
+      }
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : "Network error";
+      setErrorMsg(`Error saving studio layout: ${msg}`);
+    }
+  }
+
 
   async function handleSearchSpotify(query: string): Promise<SpotifySearchResult[]> {
     try {
@@ -730,6 +766,14 @@ export default function App() {
             onRefreshSpotify={handleRefreshSpotify}
             onDisconnectSpotify={handleDisconnectSpotify}
           />
+        ) : currentPage === "studio" ? (
+          <StudioTab
+            apiBase={API_BASE}
+            installedOverlays={installedOverlays}
+            studio={studioScene}
+            onSaveStudio={handleSaveStudio}
+            onGoToMarket={() => setCurrentPage("overlays")}
+          />
         ) : (
           <OverlaysTab
             apiBase={API_BASE}
@@ -740,6 +784,7 @@ export default function App() {
             onInstall={handleInstallOverlay}
             onCreateCustom={handleCreateCustomOverlay}
             onDeleteOverlay={handleDeleteOverlay}
+            onOpenStudio={() => setCurrentPage("studio")}
           />
         )}
       </main>

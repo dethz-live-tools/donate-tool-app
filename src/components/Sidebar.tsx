@@ -2,8 +2,8 @@ import React from "react";
 import { SpotifyInfo, SpotifyTrack } from "../types";
 
 interface SidebarProps {
-  currentPage: "dashboard" | "config" | "overlays";
-  onSelectPage: (page: "dashboard" | "config" | "overlays") => void;
+  currentPage: "dashboard" | "config" | "overlays" | "studio";
+  onSelectPage: (page: "dashboard" | "config" | "overlays" | "studio") => void;
   status: "disconnected" | "connecting" | "connected" | "error";
   roomId: string | null;
   spotify: SpotifyInfo;
@@ -48,6 +48,14 @@ export const Sidebar: React.FC<SidebarProps> = ({
           onClick={() => onSelectPage("overlays")}
         >
           <span>[ OVERLAYS MARKET ]</span>
+          <span>→</span>
+        </button>
+        <button
+          type="button"
+          className={`sidebar-tab ${currentPage === "studio" ? "active" : ""}`}
+          onClick={() => onSelectPage("studio")}
+        >
+          <span>[ OVERLAY STUDIO ]</span>
           <span>→</span>
         </button>
       </nav>

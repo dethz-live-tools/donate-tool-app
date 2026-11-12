@@ -1,6 +1,7 @@
 import fs from "node:fs";
 import type http from "node:http";
 import path from "node:path";
+import { loadConfig, normalizeStudioScene, saveConfig } from "../config.ts";
 import {
   checkGitAvailable,
   createCustomOverlay,
@@ -12,7 +13,132 @@ import {
   OVERLAYS_DIR,
   pullOverlayFromGit,
 } from "../services/overlays.ts";
+import { broadcastState, state } from "../state.ts";
 import { parseJsonBody, sendJson } from "../utils.ts";
+
+const STUDIO_OBS_HTML = `<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>OBS Overlay Studio Scene</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    html, body {
+      width: 100vw;
+      height: 100vh;
+      background: transparent !important;
+      overflow: hidden;
+    }
+    #stage {
+      position: relative;
+      transform-origin: top left;
+      background: transparent;
+      overflow: hidden;
+    }
+    .studio-layer {
+      position: absolute;
+      border: none;
+      background: transparent;
+      pointer-events: none;
+      transform-origin: top left;
+      overflow: hidden;
+    }
+  </style>
+</head>
+<body>
+  <div id="stage"></div>
+  <script>
+    const stage = document.getElementById("stage");
+    const frameMap = new Map();
+    let sceneWidth = 1920;
+    let sceneHeight = 1080;
+
+    function fitStage() {
+      stage.style.width = sceneWidth + "px";
+      stage.style.height = sceneHeight + "px";
+      const sx = window.innerWidth / sceneWidth;
+      const sy = window.innerHeight / sceneHeight;
+      const scale = Math.min(sx, sy);
+      if (Math.abs(scale - 1) > 0.002 && isFinite(scale) && scale > 0) {
+        stage.style.transform = "scale(" + scale + ")";
+      } else {
+        stage.style.transform = "none";
+      }
+    }
+
+    window.addEventListener("resize", fitStage);
+
+    function applyScene(studio) {
+      if (!studio || typeof studio !== "object") return;
+      sceneWidth = Number(studio.width) || 1920;
+      sceneHeight = Number(studio.height) || 1080;
+      fitStage();
+
+      const layers = Array.isArray(studio.layers) ? studio.layers : [];
+      const activeIds = new Set();
+
+      for (const layer of layers) {
+        if (!layer || !layer.id || !layer.overlayId || layer.overlayId === "studio") continue;
+        if (layer.visible === false) continue;
+        activeIds.add(layer.id);
+
+        let iframe = frameMap.get(layer.id);
+        const targetSrc = "/overlays/" + encodeURIComponent(layer.overlayId) + "/";
+        if (!iframe) {
+          iframe = document.createElement("iframe");
+          iframe.className = "studio-layer";
+          iframe.setAttribute("allowtransparency", "true");
+          iframe.dataset.overlayId = layer.overlayId;
+          iframe.src = targetSrc;
+          stage.appendChild(iframe);
+          frameMap.set(layer.id, iframe);
+        } else if (iframe.dataset.overlayId !== layer.overlayId) {
+          iframe.dataset.overlayId = layer.overlayId;
+          iframe.src = targetSrc;
+        }
+
+        iframe.style.left = (Number(layer.x) || 0) + "px";
+        iframe.style.top = (Number(layer.y) || 0) + "px";
+        iframe.style.width = (Number(layer.width) || 400) + "px";
+        iframe.style.height = (Number(layer.height) || 150) + "px";
+        iframe.style.zIndex = String(Number(layer.zIndex) || 1);
+        iframe.style.opacity = String(layer.opacity !== undefined ? layer.opacity : 1);
+        const s = Number(layer.scale || 1);
+        iframe.style.transform = s !== 1 ? "scale(" + s + ")" : "none";
+      }
+
+      for (const [id, iframe] of frameMap.entries()) {
+        if (!activeIds.has(id)) {
+          iframe.remove();
+          frameMap.delete(id);
+        }
+      }
+    }
+
+    fetch("/api/overlays/studio")
+      .then((r) => r.json())
+      .then((d) => { if (d && d.studio) applyScene(d.studio); })
+      .catch(() => {});
+
+    function connectSse() {
+      const es = new EventSource("/api/events");
+      es.onmessage = (ev) => {
+        try {
+          const data = JSON.parse(ev.data);
+          if (data && data.config && data.config.studio) {
+            applyScene(data.config.studio);
+          }
+        } catch {}
+      };
+      es.onerror = () => {
+        es.close();
+        setTimeout(connectSse, 3000);
+      };
+    }
+    connectSse();
+  </script>
+</body>
+</html>`;
 
 const MIME_TYPES: Record<string, string> = {
   ".html": "text/html; charset=utf-8",
@@ -39,6 +165,53 @@ export async function handleOverlayRoutes(
   res: http.ServerResponse,
   url: URL
 ): Promise<boolean> {
+  // 0. Master OBS Studio Composed Scene Page (/overlays/studio or /overlays/studio/)
+  if (
+    (url.pathname === "/overlays/studio" ||
+      url.pathname === "/overlays/studio/" ||
+      url.pathname === "/overlays/studio/index.html") &&
+    (req.method === "GET" || req.method === "HEAD")
+  ) {
+    const buf = Buffer.from(STUDIO_OBS_HTML, "utf-8");
+    res.writeHead(200, {
+      "Content-Type": "text/html; charset=utf-8",
+      "Content-Length": buf.length,
+      "Access-Control-Allow-Origin": "*",
+      "Cache-Control": "no-cache, no-store, must-revalidate",
+    });
+    if (req.method === "HEAD") {
+      res.end();
+    } else {
+      res.end(buf);
+    }
+    return true;
+  }
+
+  // 0b. API: Get or Save Studio Scene Layout
+  if (url.pathname === "/api/overlays/studio" || url.pathname === "/api/overlays/studio/") {
+    if (req.method === "GET") {
+      const config = loadConfig();
+      const studio = normalizeStudioScene(config.studio);
+      sendJson(res, 200, { success: true, studio });
+      return true;
+    }
+    if (req.method === "POST" || req.method === "PUT") {
+      try {
+        const body = await parseJsonBody(req);
+        const rawStudio = body && typeof body === "object" && "studio" in body ? body.studio : body;
+        const normalized = normalizeStudioScene(rawStudio);
+        saveConfig({ studio: normalized });
+        state.config = loadConfig();
+        broadcastState();
+        sendJson(res, 200, { success: true, studio: state.config.studio });
+      } catch (err: unknown) {
+        const message = err instanceof Error ? err.message : "Failed to save studio scene";
+        sendJson(res, 400, { success: false, error: message });
+      }
+      return true;
+    }
+  }
+
   // 1. Static file serving for /overlays/...
   if (url.pathname.startsWith("/overlays") && (req.method === "GET" || req.method === "HEAD")) {
     const rawSubpath = url.pathname.replace(/^\/overlays\/?/, "");

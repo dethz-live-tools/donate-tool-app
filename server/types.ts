@@ -18,6 +18,7 @@ export interface AppConfig {
   ui?: {
     minimizedBoxes?: Record<string, boolean>;
   };
+  studio?: StudioScene;
 }
 
 export interface TikTokGiftPayload {
@@ -214,4 +215,25 @@ export interface OverlayMeta {
 export interface OverlayMarketItem extends OverlayMeta {
   isInstalled: boolean;
   tags: string[];
+}
+
+export interface StudioLayer {
+  id: string;
+  overlayId: string;
+  name: string;
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+  scale: number;
+  opacity: number;
+  zIndex: number;
+  visible: boolean;
+  locked: boolean;
+}
+
+export interface StudioScene {
+  width: number;
+  height: number;
+  layers: StudioLayer[];
 }

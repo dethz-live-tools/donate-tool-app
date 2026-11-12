@@ -1,4 +1,4 @@
-import { exec } from "node:child_process";
+import { exec, execFile } from "node:child_process";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -998,18 +998,22 @@ export function openFolderInOS(subpath?: string): Promise<{ success: boolean; pa
 
   const platform = process.platform;
   return new Promise((resolve) => {
-    let cmd = "";
+    let file = "";
+    let args: string[] = [];
     if (platform === "darwin") {
-      cmd = `open "${targetPath}"`;
+      file = "open";
+      args = [targetPath];
     } else if (platform === "win32") {
-      cmd = `explorer "${targetPath.replace(/\//g, "\\")}"`;
+      file = "explorer";
+      args = [targetPath.replace(/\//g, "\\")];
     } else {
-      cmd = `xdg-open "${targetPath}"`;
+      file = "xdg-open";
+      args = [targetPath];
     }
 
-    exec(cmd, (err) => {
+    execFile(file, args, (err) => {
       if (err) {
-        console.error(`[Overlays] Failed to open folder (${cmd}):`, err.message);
+        console.error(`[Overlays] Failed to open folder (${file} ${args.join(" ")}):`, err.message);
         resolve({ success: false, path: targetPath, platform, error: err.message });
       } else {
         resolve({ success: true, path: targetPath, platform });
@@ -1241,7 +1245,7 @@ export async function pullOverlayFromGit(options: {
     try {
       console.log(`[Overlays] Git detected. Cloning ${gitUrl}...`);
       await new Promise<void>((resolve, reject) => {
-        exec(`git clone --depth 1 "${gitUrl}" "${targetDir}"`, (err, _stdout, stderr) => {
+        execFile("git", ["clone", "--depth", "1", "--", gitUrl, targetDir], (err, _stdout, stderr) => {
           if (err) {
             reject(new Error(`git clone error: ${stderr || err.message}`));
           } else {

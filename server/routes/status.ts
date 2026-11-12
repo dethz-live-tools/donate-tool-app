@@ -1,5 +1,5 @@
 import type http from "node:http";
-import { loadConfig, saveConfig } from "../config.ts";
+import { getPublicConfig, loadConfig, saveConfig } from "../config.ts";
 import { resetSpotifyWebhookTracker } from "../services/spotify.ts";
 import { broadcastState, getSpotifyPublicState, sseClients, state } from "../state.ts";
 import { parseJsonBody, sendJson } from "../utils.ts";
@@ -21,7 +21,7 @@ export async function handleStatusRoutes(
       spotify: state.spotify,
       recentChats: state.recentChats || [],
       songRequests: state.songRequests || [],
-      config: state.config,
+      config: getPublicConfig(state.config),
     });
     return true;
   }
@@ -54,7 +54,7 @@ export async function handleStatusRoutes(
         spotify: state.spotify,
         recentChats: state.recentChats || [],
         songRequests: state.songRequests || [],
-        config: state.config,
+        config: getPublicConfig(state.config),
       })}\n\n`
     );
     sseClients.push(res);
@@ -68,7 +68,7 @@ export async function handleStatusRoutes(
   // Get current config.yaml contents
   if (url.pathname === "/api/config" && req.method === "GET") {
     const config = loadConfig();
-    sendJson(res, 200, config);
+    sendJson(res, 200, getPublicConfig(config));
     return true;
   }
 
@@ -85,7 +85,7 @@ export async function handleStatusRoutes(
       saveConfig(parsed);
       state.config = loadConfig();
       broadcastState();
-      sendJson(res, 200, { success: true, message: "Configuration saved to config.yaml", config: state.config });
+      sendJson(res, 200, { success: true, message: "Configuration saved to config.yaml", config: getPublicConfig(state.config) });
     } catch (err: any) {
       sendJson(res, 400, { success: false, error: err.message });
     }

@@ -2,7 +2,43 @@ import fs from "node:fs";
 import path from "node:path";
 import process from "node:process";
 import YAML from "yaml";
-import type { AppConfig } from "./types.ts";
+import type { AppConfig, StudioLayer, StudioScene } from "./types.ts";
+
+const DEFAULT_STUDIO_SCENE: StudioScene = {
+  width: 1920,
+  height: 1080,
+  layers: [],
+};
+
+export function normalizeStudioScene(raw: unknown): StudioScene {
+  if (!raw || typeof raw !== "object") {
+    return { ...DEFAULT_STUDIO_SCENE, layers: [] };
+  }
+  const obj = raw as Record<string, unknown>;
+  const width = Math.max(320, Math.min(7680, Number(obj.width) || 1920));
+  const height = Math.max(240, Math.min(4320, Number(obj.height) || 1080));
+  const layers: StudioLayer[] = Array.isArray(obj.layers)
+    ? obj.layers
+        .filter((item): item is Record<string, unknown> =>
+          Boolean(item && typeof item === "object" && "overlayId" in item && item.overlayId && item.overlayId !== "studio")
+        )
+        .map((l, idx) => ({
+          id: String(l.id || `layer-${idx}-${Date.now()}`),
+          overlayId: String(l.overlayId).replace(/[^a-zA-Z0-9_-]/g, ""),
+          name: String(l.name || l.overlayId),
+          x: Math.round(Number(l.x) || 0),
+          y: Math.round(Number(l.y) || 0),
+          width: Math.max(40, Math.round(Number(l.width) || 400)),
+          height: Math.max(20, Math.round(Number(l.height) || 150)),
+          scale: Math.max(0.1, Math.min(5, Number(l.scale ?? 1))),
+          opacity: Math.max(0, Math.min(1, Number(l.opacity ?? 1))),
+          zIndex: Number.isFinite(Number(l.zIndex)) ? Math.round(Number(l.zIndex)) : idx + 1,
+          visible: l.visible !== false,
+          locked: Boolean(l.locked),
+        }))
+    : [];
+  return { width, height, layers };
+}
 
 export const CONFIG_FILE = path.resolve(process.cwd(), "config.yaml");
 export const LEGACY_CONFIG_FILE = path.resolve(process.cwd(), "connector-config.json");
@@ -33,6 +69,7 @@ export function loadConfig(): AppConfig {
           ui: {
             minimizedBoxes: parsed.ui?.minimized_boxes || {},
           },
+          studio: normalizeStudioScene(parsed.studio),
         };
       }
     } else if (fs.existsSync(LEGACY_CONFIG_FILE)) {
@@ -58,6 +95,7 @@ export function loadConfig(): AppConfig {
         ui: {
           minimizedBoxes: {},
         },
+        studio: { ...DEFAULT_STUDIO_SCENE, layers: [] },
       };
       saveConfig(migrated);
       return migrated;
@@ -85,6 +123,15 @@ export function loadConfig(): AppConfig {
     ui: {
       minimizedBoxes: {},
     },
+    studio: { ...DEFAULT_STUDIO_SCENE, layers: [] },
+  };
+}
+
+export function getPublicConfig(config: AppConfig): AppConfig {
+  return {
+    ...config,
+    spotifyClientSecret: config.spotifyClientSecret ? "••••••••" : "",
+    spotifyRefreshToken: config.spotifyRefreshToken ? "••••••••" : "",
   };
 }
 
@@ -111,6 +158,7 @@ export function saveConfig(updates: Partial<AppConfig>) {
       ui: {
         minimizedBoxes: {},
       },
+      studio: { ...DEFAULT_STUDIO_SCENE, layers: [] },
     };
 
     const sendTts = updates.sendTtsWebhook !== undefined
@@ -122,8 +170,18 @@ export function saveConfig(updates: Partial<AppConfig>) {
       webhookUri: updates.webhookUri !== undefined ? updates.webhookUri : existing.webhookUri,
       sendTtsWebhook: sendTts,
       spotifyClientId: updates.spotifyClientId !== undefined ? updates.spotifyClientId : existing.spotifyClientId,
-      spotifyClientSecret: updates.spotifyClientSecret !== undefined ? updates.spotifyClientSecret : existing.spotifyClientSecret,
-      spotifyRefreshToken: updates.spotifyRefreshToken !== undefined ? updates.spotifyRefreshToken : existing.spotifyRefreshToken,
+      spotifyClientSecret:
+        updates.spotifyClientSecret !== undefined &&
+        updates.spotifyClientSecret !== "••••••••" &&
+        updates.spotifyClientSecret.trim() !== ""
+          ? updates.spotifyClientSecret.trim()
+          : existing.spotifyClientSecret,
+      spotifyRefreshToken:
+        updates.spotifyRefreshToken !== undefined &&
+        updates.spotifyRefreshToken !== "••••••••" &&
+        updates.spotifyRefreshToken.trim() !== ""
+          ? updates.spotifyRefreshToken.trim()
+          : existing.spotifyRefreshToken,
       tts: {
         ...existing.tts,
         ...updates.tts,
@@ -134,6 +192,9 @@ export function saveConfig(updates: Partial<AppConfig>) {
           ? { ...existing.ui?.minimizedBoxes, ...updates.ui.minimizedBoxes }
           : existing.ui?.minimizedBoxes,
       },
+      studio: updates.studio !== undefined
+        ? normalizeStudioScene(updates.studio)
+        : normalizeStudioScene(existing.studio),
     };
 
     const yamlData = {
@@ -162,6 +223,7 @@ export function saveConfig(updates: Partial<AppConfig>) {
       ui: {
         minimized_boxes: merged.ui?.minimizedBoxes || {},
       },
+      studio: merged.studio || DEFAULT_STUDIO_SCENE,
     };
 
     const serialized = YAML.stringify(yamlData, { indent: 2 });

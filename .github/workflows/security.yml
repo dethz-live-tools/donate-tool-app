@@ -57,6 +57,23 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
+      - name: Setup Bun
+        if: env.HAS_KEY == 'true'
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - name: Install dependencies
+        if: env.HAS_KEY == 'true'
+        run: bun install --frozen-lockfile
+
+      - name: Start local staging server
+        if: env.HAS_KEY == 'true'
+        run: |
+          bun server/index.ts &
+          sleep 3
+          curl -s http://127.0.0.1:3001/api/status || exit 1
+
       - name: Run Shannon AI Pentest Scanner
         if: env.HAS_KEY == 'true'
         uses: KeygraphHQ/shannon-action@v1

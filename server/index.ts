@@ -22,20 +22,56 @@ if (spotifyState.refreshToken && spotifyState.clientId && spotifyState.clientSec
   startSpotifyPolling();
 }
 
+export function isAllowedOrigin(origin?: string): boolean {
+  if (!origin) return true; // Native desktop apps, curl, direct same-origin requests
+  try {
+    const parsed = new URL(origin);
+    const host = parsed.hostname.toLowerCase();
+    // Allow Tauri webviews
+    if (parsed.protocol === "tauri:" || host === "tauri.localhost") return true;
+    // Allow local loopback origins (Vite dev server, OBS Browser source, local tabs)
+    if (host === "localhost" || host === "127.0.0.1" || host === "::1" || host === "[::1]") return true;
+    return false;
+  } catch {
+    return false;
+  }
+}
+
 export const server = http.createServer(async (req, res) => {
   try {
-    // CORS headers
-    res.setHeader("Access-Control-Allow-Origin", "*");
-    res.setHeader("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, HEAD, OPTIONS");
-    res.setHeader("Access-Control-Allow-Headers", "Content-Type, Authorization, *");
+    const origin = req.headers.origin;
+    const allowed = isAllowedOrigin(origin);
+
+    if (allowed) {
+      if (origin) {
+        res.setHeader("Access-Control-Allow-Origin", origin);
+        res.setHeader("Vary", "Origin");
+      } else {
+        res.setHeader("Access-Control-Allow-Origin", "*");
+      }
+      res.setHeader("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, HEAD, OPTIONS");
+      res.setHeader("Access-Control-Allow-Headers", "Content-Type, Authorization, *");
+    }
 
     if (req.method === "OPTIONS") {
+      if (!allowed) {
+        res.writeHead(403);
+        res.end("Cross-Origin Request Blocked");
+        return;
+      }
       res.writeHead(204);
       res.end();
       return;
     }
 
     const url = new URL(req.url || "/", `http://${req.headers.host || "localhost"}`);
+
+    // Block cross-origin requests from untrusted external web pages targeting /api/*
+    if (!allowed && url.pathname.startsWith("/api/")) {
+      sendJson(res, 403, { error: "Cross-Origin Request Blocked" });
+      return;
+    }
+
     const handled = await handleRoutes(req, res, url);
 
     if (!handled) {

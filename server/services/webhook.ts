@@ -1,5 +1,39 @@
 import { broadcastState, state } from "../state.ts";
 import type { LogEntry, WebhookPayload } from "../types.ts";
+import { PORT } from "../utils.ts";
+
+export function validateWebhookUrl(uri: string): void {
+  const parsed = new URL(uri);
+  if (parsed.protocol !== "http:" && parsed.protocol !== "https:") {
+    throw new Error("Only http: and https: webhook protocols allowed");
+  }
+
+  // Reject embedded credentials in URL
+  if (parsed.username || parsed.password) {
+    throw new Error("Credentials in webhook URL are forbidden");
+  }
+
+  const hostname = parsed.hostname.toLowerCase();
+
+  // Block cloud metadata services and link-local addresses
+  if (
+    hostname === "169.254.169.254" ||
+    hostname === "169.254.169.253" ||
+    hostname === "metadata.google.internal" ||
+    hostname.startsWith("169.254.") ||
+    hostname === "[fd00:ec2::254]" ||
+    hostname.startsWith("fe80:")
+  ) {
+    throw new Error("Targeting cloud metadata services or link-local addresses is forbidden");
+  }
+
+  // Block webhook targeting the internal application's own API port
+  const port = parsed.port ? Number(parsed.port) : (parsed.protocol === "https:" ? 443 : 80);
+  const isLoopback = hostname === "localhost" || hostname === "127.0.0.1" || hostname === "::1" || hostname === "[::1]";
+  if (isLoopback && port === PORT) {
+    throw new Error("Webhook cannot target the application's own API port");
+  }
+}
 
 export async function sendWebhook(
   payload: WebhookPayload,
@@ -23,12 +57,9 @@ export async function sendWebhook(
     return entry;
   }
 
-  // Enforce http/https protocol security
+  // Enforce protocol and SSRF security validations
   try {
-    const parsedUrl = new URL(uri);
-    if (parsedUrl.protocol !== "http:" && parsedUrl.protocol !== "https:") {
-      throw new Error("Only http: and https: webhook protocols allowed");
-    }
+    validateWebhookUrl(uri);
   } catch (urlErr: any) {
     const entry: LogEntry = {
       id: Math.random().toString(36).slice(2, 9),

@@ -1,5 +1,5 @@
 import type http from "node:http";
-import { loadConfig } from "./config.ts";
+import { getPublicConfig, loadConfig } from "./config.ts";
 import type { ServerState, SongRequestItem, SpotifyInfo, SpotifyState, TikTokChatMessage } from "./types.ts";
 
 export const initialConfig = loadConfig();
@@ -68,7 +68,7 @@ export function broadcastState() {
     spotify: state.spotify,
     recentChats: state.recentChats,
     songRequests: state.songRequests,
-    config: state.config,
+    config: getPublicConfig(state.config),
   });
 
   const message = `data: ${data}\n\n`;

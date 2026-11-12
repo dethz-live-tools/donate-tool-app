@@ -27,3 +27,6 @@ config.yaml
 *.local.yaml
 
 RELEASED_NOTE
+
+# Pentest logs
+pentest_log
