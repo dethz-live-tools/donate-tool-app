@@ -104,6 +104,66 @@ describe("Overlay Studio normalization & safety", () => {
     });
   });
 
+  test("keeps absolute HTTP(S) layers and drops unsafe external sources without local fallback", () => {
+    const invalidUrls = [
+      "", "/widget", "//example.test/widget", "https:example.test", "http:/example.test",
+      "javascript:alert(1)", "data:text/html,bad", "file:///tmp/widget", "ftp://example.test/widget",
+      "https://user:secret@example.test/widget", "https://user@example.test/widget",
+      "https://:secret@example.test/widget", "https://", "https://[bad", null, 42,
+    ];
+    const result = normalizeStudioScene({ layers: [
+      { id: "secure", overlayId: "", url: "https://example.test/widget?token=a%2Fb&mode=live#overlay", x: 12.7, width: 10 },
+      { id: "http", overlayId: "", url: "HTTP://EXAMPLE.TEST:80/widget" },
+      { id: "local", overlayId: "spotify-card" },
+      { id: "recursive", overlayId: "studio" },
+      { id: "sanitized-recursive", overlayId: "studio/" },
+      { id: "recursive-with-url", overlayId: "studio", url: "https://example.test/widget" },
+      ...invalidUrls.map((url, index) => ({ id: `invalid-${index}`, overlayId: "spotify-card", url })),
+    ] });
+    expect(result.layers.map((layer) => layer.id)).toEqual(["secure", "http", "local"]);
+    expect(result.layers[0]).toMatchObject({
+      overlayId: "", url: "https://example.test/widget?token=a%2Fb&mode=live#overlay", x: 13, width: 40,
+    });
+    expect(result.layers[1]?.url).toBe("http://example.test/widget");
+    expect(result.layers[2]).not.toHaveProperty("url");
+  });
+
+  test("round-trips external URLs in master and profile scenes while filtering unsafe persisted values", () => {
+    runIsolatedStudio(`
+      const url = "https://example.test/widget?token=a%2Fb&mode=live#overlay";
+      const scene = { width: 1280, height: 720, layers: [
+        { id: "external", overlayId: "", url, name: "External" },
+        { id: "unsafe", overlayId: "local", url: "https://user:secret@example.test/widget" },
+      ] };
+      const master = await request("/api/overlays/studio", { studio: scene });
+      assert.equal(master.status, 200);
+      assert.equal(master.body.studio.layers.length, 1);
+      assert.equal(master.body.studio.layers[0].url, url);
+      assert.equal(master.body.studio.layers[0].overlayId, "");
+      const created = await request("/api/overlays/studio/profiles", { name: "External", scene });
+      assert.equal(created.status, 200);
+      const profile = created.body.profile;
+      assert.deepEqual(profile.scene, master.body.studio);
+      saveConfig({ username: "unchanged" });
+      assert.deepEqual(loadConfig().studio, master.body.studio);
+      assert.deepEqual(loadConfig().studioProfiles, [profile]);
+      assert.deepEqual((await request("/api/overlays/studio")).body.studio, master.body.studio);
+      assert.deepEqual((await request("/api/overlays/studio?profile=" + profile.id)).body.studio, profile.scene);
+      const changedUrl = "http://example.test/other?view=profile";
+      const updated = await request("/api/overlays/studio?profile=" + profile.id, {
+        studio: { ...scene, layers: [{ ...scene.layers[0], url: changedUrl }] },
+      });
+      assert.equal(updated.status, 200);
+      assert.equal(loadConfig().studioProfiles[0].scene.layers[0].url, changedUrl);
+      assert.equal(loadConfig().studio.layers[0].url, url);
+      fs.writeFileSync(CONFIG_FILE, JSON.stringify({
+        studio: scene, studioProfiles: [{ ...profile, scene }],
+      }));
+      assert.deepEqual(loadConfig().studio, master.body.studio);
+      assert.deepEqual(loadConfig().studioProfiles[0].scene, master.body.studio);
+    `);
+  });
+
   test("guards reserved 'studio' ID when creating custom overlays", () => {
     runIsolatedStudio(`
       const created = createCustomOverlay({ id: "studio", name: "Attempt Reserved ID" });
@@ -280,6 +340,81 @@ describe("Named Studio profiles", () => {
       assert.equal(a.stage.style.width, "1280px");
       assert.equal(b.stage.style.width, "900px");
       assert.equal(master.stage.style.width, "1600px");
+    `);
+  });
+
+  test("OBS runtime sandboxes external sources and updates URLs across local transitions", () => {
+    runIsolatedStudio(`
+      const html = await (await fetch(base + "/overlays/studio/")).text();
+      const script = html.split("<script>")[1].split("</script>")[0];
+      const children = [];
+      const navigations = [];
+      const rendered = Promise.withResolvers();
+      const stage = { style: {}, appendChild(frame) { children.push(frame); } };
+      let events;
+      let fetches = 0;
+      const local = { id: "same", overlayId: "spotify-card" };
+      const context = {
+        document: {
+          getElementById: () => stage,
+          createElement(tag) {
+            assert.equal(tag, "iframe");
+            const attributes = {};
+            return {
+              style: {}, dataset: {}, attributes,
+              setAttribute(name, value) { attributes[name] = value; },
+              removeAttribute(name) { delete attributes[name]; },
+              set src(value) { navigations.push({ src: value, ...attributes }); rendered.resolve(); },
+              remove() { children.splice(children.indexOf(this), 1); },
+            };
+          },
+        },
+        window: { location: { search: "" }, innerWidth: 1920, innerHeight: 1080, addEventListener() {} },
+        URL, URLSearchParams,
+        fetch: async (url) => {
+          assert.equal(url, "/api/overlays/studio");
+          fetches++;
+          return { json: async () => ({ studio: { layers: [local] } }) };
+        },
+        EventSource: class { constructor(url) { assert.equal(url, "/api/events"); events = this; } },
+        setTimeout() { throw new Error("Unexpected SSE reconnect"); },
+      };
+      vm.runInNewContext(script, context);
+      await rendered.promise;
+      const frame = children[0];
+      assert.equal(children.length, 1);
+      assert.deepEqual(navigations[0], { src: "/overlays/spotify-card/", allowtransparency: "true" });
+      function update(layers) {
+        events.onmessage({ data: JSON.stringify({ config: { studio: { layers } } }) });
+      }
+      const external = { ...local, overlayId: "", url: "https://example.test/widget?token=a%2Fb&mode=live" };
+      update([external]);
+      assert.equal(children[0], frame);
+      assert.deepEqual(navigations[1], {
+        src: external.url, allowtransparency: "true", sandbox: "allow-scripts allow-same-origin", referrerpolicy: "no-referrer",
+      });
+      const changed = { ...external, url: "http://example.test/changed?view=2" };
+      update([changed]);
+      assert.equal(navigations[2].src, changed.url);
+      update([{ ...changed, x: 50 }]);
+      assert.equal(navigations.length, 3);
+      update([local]);
+      assert.equal(children[0], frame);
+      assert.deepEqual(navigations[3], { src: "/overlays/spotify-card/", allowtransparency: "true" });
+      assert.equal(frame.attributes.sandbox, undefined);
+      assert.equal(frame.attributes.referrerpolicy, undefined);
+      for (const url of ["javascript:alert(1)", "/relative", "https://user:secret@example.test/widget", "https://"]) {
+        update([{ ...local, url }]);
+        assert.equal(children.length, 0);
+        assert.equal(navigations.length, 4);
+      }
+      update([external]);
+      assert.equal(children.length, 1);
+      assert.equal(navigations[4].sandbox, "allow-scripts allow-same-origin");
+      assert.equal(navigations[4].referrerpolicy, "no-referrer");
+      update([{ ...external, visible: false }]);
+      assert.equal(children.length, 0);
+      assert.equal(fetches, 1);
     `);
   });
 });

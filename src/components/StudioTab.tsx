@@ -49,9 +49,13 @@ export const StudioTab: React.FC<StudioTabProps> = ({
   const [profileName, setProfileName] = useState("");
   const [profileUrl, setProfileUrl] = useState("");
   const [profilesError, setProfilesError] = useState("");
+  const [externalUrl, setExternalUrl] = useState("");
+  const [externalName, setExternalName] = useState("");
+  const [externalError, setExternalError] = useState("");
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
   const [snapGrid, setSnapGrid] = useState<boolean>(true);
+  const [showTikTokGuides, setShowTikTokGuides] = useState(false);
   const [saving, setSaving] = useState<boolean>(false);
   const [copied, setCopied] = useState<boolean>(false);
   const [expanded, setExpanded] = useState(false);
@@ -367,12 +371,13 @@ export const StudioTab: React.FC<StudioTabProps> = ({
     };
   }
 
-  function handleAddLayer(overlay: OverlayMeta) {
+  function handleAddLayer(overlay: Pick<OverlayMeta, "id" | "name" | "width" | "height">, url?: string) {
     const maxZ = scene.layers.reduce((m, l) => Math.max(m, l.zIndex), 0);
     const offset = (scene.layers.length % 6) * 30;
     const newLayer: StudioLayer = {
       id: `layer-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
       overlayId: overlay.id,
+      ...(url ? { url } : {}),
       name: overlay.name,
       x: snap(40 + offset),
       y: snap(40 + offset),
@@ -390,6 +395,25 @@ export const StudioTab: React.FC<StudioTabProps> = ({
     };
     setSelectedId(newLayer.id);
     void saveImmediate(next);
+  }
+
+  function handleAddExternalLayer(event: React.FormEvent) {
+    event.preventDefault();
+    if (busyRef.current) return;
+    try {
+      const input = externalUrl.trim();
+      if (!/^https?:\/\//i.test(input)) throw new Error("Enter an absolute HTTP or HTTPS URL.");
+      const url = new URL(input);
+      if ((url.protocol !== "http:" && url.protocol !== "https:") || url.username || url.password) {
+        throw new Error("Use an HTTP or HTTPS URL without a username or password.");
+      }
+      handleAddLayer({ id: "", name: externalName.trim() || url.hostname, width: 480, height: 160 }, url.href);
+      setExternalUrl("");
+      setExternalName("");
+      setExternalError("");
+    } catch (err) {
+      setExternalError(err instanceof Error ? err.message : "Invalid external overlay URL.");
+    }
   }
 
   function updateLayer(id: string, patch: Partial<StudioLayer>) {
@@ -657,8 +681,17 @@ export const StudioTab: React.FC<StudioTabProps> = ({
             >
               GRID SNAP: {snapGrid ? "ON (10PX)" : "OFF"}
             </button>
+            <button
+              type="button"
+              className={`filter-btn ${showTikTokGuides ? "active" : ""}`}
+              aria-pressed={showTikTokGuides}
+              onClick={() => setShowTikTokGuides((visible) => !visible)}
+            >
+              TIKTOK LIVE DANGER ZONES: {showTikTokGuides ? "ON" : "OFF"}
+            </button>
           </div>
         </div>
+        {showTikTokGuides && <p className="mono-font" style={{ fontSize: "11px", marginTop: "8px", color: "var(--status-warning)" }}>Approximate TikTok LIVE UI areas; device and LIVE layout vary. Editor only — check on your phone before going live.</p>}
       </section>
 
       {/* Main Studio Workspace */}
@@ -736,7 +769,9 @@ export const StudioTab: React.FC<StudioTabProps> = ({
                       {layer.name} ({layer.x},{layer.y})
                     </div>
                     <iframe
-                      src={`${apiBase}/overlays/${encodeURIComponent(layer.overlayId)}/`}
+                      src={layer.url || `${apiBase}/overlays/${encodeURIComponent(layer.overlayId)}/`}
+                      sandbox={layer.url ? "allow-scripts allow-same-origin" : undefined}
+                      referrerPolicy={layer.url ? "no-referrer" : undefined}
                       title={layer.name}
                       style={{
                         width: "100%",
@@ -756,12 +791,59 @@ export const StudioTab: React.FC<StudioTabProps> = ({
                   </div>
                 );
               })}
+              {showTikTokGuides && (
+                <div className="studio-tiktok-guides" aria-label="TikTok LIVE danger zone guides">
+                  {/* shortcut: approximate LIVE UI proportions; calibrate against device screenshots when exact placement is required. */}
+                  <div className="studio-tiktok-zone" style={{ top: 0, left: 0, width: "100%", height: "12%" }}>HEADER / LIVE INFO</div>
+                  <div className="studio-tiktok-zone" style={{ top: "12%", right: 0, width: "18%", height: "70%" }}>LIVE CONTROLS</div>
+                  <div className="studio-tiktok-zone" style={{ bottom: "10%", left: 0, width: "82%", height: "30%" }}>CHAT / GIFTS</div>
+                  <div className="studio-tiktok-zone" style={{ bottom: 0, left: 0, width: "100%", height: "10%" }}>COMMENT / BOTTOM BAR</div>
+                </div>
+              )}
             </div>
           </div>
         </div>
 
         {/* Right Sidebar: Add Widgets, Layer Stack, Inspector */}
         <div className="studio-side-panel">
+          <section className="raw-card" aria-label="External overlay tools" style={{ padding: "14px" }}>
+            <h3 style={{ fontSize: "13px", marginBottom: "10px" }}>+ EXTERNAL OVERLAY URL</h3>
+            <form onSubmit={handleAddExternalLayer} noValidate style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
+              <input
+                type="url"
+                className="raw-input"
+                aria-label="External overlay URL"
+                aria-describedby={externalError ? "studio-external-help studio-external-error" : "studio-external-help"}
+                aria-invalid={Boolean(externalError)}
+                placeholder="https://example.com/overlay?token=..."
+                value={externalUrl}
+                disabled={busy}
+                required
+                onChange={(event) => setExternalUrl(event.target.value)}
+              />
+              <input
+                className="raw-input"
+                aria-label="External overlay name (optional)"
+                placeholder="Layer name (optional)"
+                value={externalName}
+                maxLength={100}
+                disabled={busy}
+                onChange={(event) => setExternalName(event.target.value)}
+              />
+              <button type="submit" className="btn btn-primary" disabled={busy || !externalUrl.trim()}>
+                + ADD EXTERNAL OVERLAY
+              </button>
+            </form>
+            {externalError && (
+              <p id="studio-external-error" role="alert" className="mono-font" style={{ color: "var(--status-error)", fontSize: "11px", marginTop: "8px" }}>
+                {externalError}
+              </p>
+            )}
+            <p id="studio-external-help" className="mono-font" style={{ fontSize: "11px", color: "var(--ctp-subtext0)", marginTop: "8px" }}>
+              Use a trusted HTTP(S) overlay URL without credentials. Query parameters are kept. Some sites block iframe embedding; HTTPS pages may block HTTP embeds. Pop-ups and top navigation are disabled.
+            </p>
+          </section>
+
           {/* Add Installed Overlays */}
           <section className="raw-card" style={{ padding: "14px" }}>
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "10px" }}>

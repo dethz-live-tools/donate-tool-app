@@ -221,6 +221,7 @@ export interface OverlayMarketItem extends OverlayMeta {
 export interface StudioLayer {
   id: string;
   overlayId: string;
+  url?: string;
   name: string;
   x: number;
   y: number;

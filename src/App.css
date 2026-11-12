@@ -1595,6 +1595,28 @@ h3 {
   z-index: 0;
 }
 
+.studio-tiktok-guides {
+  position: absolute;
+  inset: 0;
+  z-index: 2147483647;
+  pointer-events: none;
+  font-family: var(--font-mono);
+  font-size: 24px;
+  font-weight: 700;
+}
+.studio-tiktok-zone {
+  position: absolute;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 8px;
+  text-align: center;
+  overflow-wrap: anywhere;
+  color: var(--status-warning);
+  border: 3px dashed var(--status-warning);
+  background: repeating-linear-gradient(135deg, transparent 0 16px, color-mix(in srgb, var(--status-warning) 18%, transparent) 16px 32px);
+}
+
 .studio-empty-hint {
   position: absolute;
   inset: 0;

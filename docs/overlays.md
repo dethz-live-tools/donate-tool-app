@@ -74,3 +74,13 @@ Instead of managing multiple separate Browser Sources in OBS, **Overlay Studio**
 - Use **COPY EDITOR LINK** to share an editor URL with `?page=studio&profile=<id>`. Opening it selects Studio and loads that profile.
 - In **PROFILE LINK TOOLS**, paste an editor or OBS URL and choose **LOAD FROM URL**. This loads the matching profile saved on this server, not a remote layout.
 - To load an older saved profile, choose it in **PROFILE**, then click **LOAD PROFILE**. Selection alone does not change the current canvas.
+
+### External iframe overlays
+
+Use the external overlay tools in Studio to add an absolute HTTP or HTTPS overlay URL. An optional name identifies the layer. External layers support the same positioning, size, visibility, opacity, ordering, and profile saving as installed overlays.
+
+Only add URLs you trust. Query parameters are preserved and saved in `config.yaml`; private overlay tokens in these URLs remain sensitive. External overlays load in the browser, not through a backend proxy, and use a sandbox permitting scripts and same-origin access but not popups or top-level navigation. Sites that block embedding through CSP or `X-Frame-Options` cannot be shown. HTTPS-hosted editors may also block HTTP overlays as mixed content.
+
+### TikTok LIVE danger zones
+
+Toggle **TIKTOK LIVE DANGER ZONES** in the Studio toolbar to mark approximate header, right-side controls, chat/gift, and bottom-bar areas. The guides scale with the canvas and do not block layer dragging. They are editor-only and never appear in OBS output. TikTok UI varies by device and LIVE layout; verify placement on your phone before streaming.

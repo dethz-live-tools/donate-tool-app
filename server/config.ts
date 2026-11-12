@@ -17,25 +17,43 @@ export function normalizeStudioScene(raw: unknown): StudioScene {
   const obj = raw as Record<string, unknown>;
   const width = Math.max(320, Math.min(7680, Number(obj.width) || 1920));
   const height = Math.max(240, Math.min(4320, Number(obj.height) || 1080));
+  let layerIndex = 0;
   const layers: StudioLayer[] = Array.isArray(obj.layers)
     ? obj.layers
-        .filter((item): item is Record<string, unknown> =>
-          Boolean(item && typeof item === "object" && "overlayId" in item && item.overlayId && item.overlayId !== "studio")
-        )
-        .map((l, idx) => ({
-          id: String(l.id || `layer-${idx}-${Date.now()}`),
-          overlayId: String(l.overlayId).replace(/[^a-zA-Z0-9_-]/g, ""),
-          name: String(l.name || l.overlayId),
-          x: Math.round(Number(l.x) || 0),
-          y: Math.round(Number(l.y) || 0),
-          width: Math.max(40, Math.round(Number(l.width) || 400)),
-          height: Math.max(20, Math.round(Number(l.height) || 150)),
-          scale: Math.max(0.1, Math.min(5, Number(l.scale ?? 1))),
-          opacity: Math.max(0, Math.min(1, Number(l.opacity ?? 1))),
-          zIndex: Number.isFinite(Number(l.zIndex)) ? Math.round(Number(l.zIndex)) : idx + 1,
-          visible: l.visible !== false,
-          locked: Boolean(l.locked),
-        }))
+        .flatMap((l): StudioLayer[] => {
+          if (!l || typeof l !== "object" || Array.isArray(l) || l.overlayId === "studio") return [];
+          let url: string | undefined;
+          let overlayId = "";
+          if (l.url !== undefined) {
+            if (typeof l.url !== "string" || !/^https?:\/\//i.test(l.url)) return [];
+            try {
+              const parsed = new URL(l.url);
+              if (!["http:", "https:"].includes(parsed.protocol) || parsed.username || parsed.password) return [];
+              url = parsed.href;
+            } catch {
+              return [];
+            }
+          } else {
+            overlayId = String(l.overlayId || "").replace(/[^a-zA-Z0-9_-]/g, "");
+            if (!overlayId || overlayId === "studio") return [];
+          }
+          const idx = layerIndex++;
+          return [{
+            id: String(l.id || `layer-${idx}-${Date.now()}`),
+            overlayId,
+            ...(url !== undefined ? { url } : {}),
+            name: String(l.name || url || l.overlayId),
+            x: Math.round(Number(l.x) || 0),
+            y: Math.round(Number(l.y) || 0),
+            width: Math.max(40, Math.round(Number(l.width) || 400)),
+            height: Math.max(20, Math.round(Number(l.height) || 150)),
+            scale: Math.max(0.1, Math.min(5, Number(l.scale ?? 1))),
+            opacity: Math.max(0, Math.min(1, Number(l.opacity ?? 1))),
+            zIndex: Number.isFinite(Number(l.zIndex)) ? Math.round(Number(l.zIndex)) : idx + 1,
+            visible: l.visible !== false,
+            locked: Boolean(l.locked),
+          }];
+        })
     : [];
   return { width, height, layers };
 }

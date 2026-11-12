@@ -80,22 +80,41 @@ const STUDIO_OBS_HTML = `<!DOCTYPE html>
       const activeIds = new Set();
 
       for (const layer of layers) {
-        if (!layer || !layer.id || !layer.overlayId || layer.overlayId === "studio") continue;
-        if (layer.visible === false) continue;
+        if (!layer || !layer.id || layer.overlayId === "studio" || layer.visible === false) continue;
+        const external = layer.url !== undefined;
+        let targetSrc;
+        if (external) {
+          if (typeof layer.url !== "string" || !/^https?:[/][/]/i.test(layer.url)) continue;
+          try {
+            const parsed = new URL(layer.url);
+            if (!["http:", "https:"].includes(parsed.protocol) || parsed.username || parsed.password) continue;
+            targetSrc = parsed.href;
+          } catch {
+            continue;
+          }
+        } else {
+          if (!layer.overlayId) continue;
+          targetSrc = "/overlays/" + encodeURIComponent(layer.overlayId) + "/";
+        }
         activeIds.add(layer.id);
 
         let iframe = frameMap.get(layer.id);
-        const targetSrc = "/overlays/" + encodeURIComponent(layer.overlayId) + "/";
         if (!iframe) {
           iframe = document.createElement("iframe");
           iframe.className = "studio-layer";
           iframe.setAttribute("allowtransparency", "true");
-          iframe.dataset.overlayId = layer.overlayId;
-          iframe.src = targetSrc;
           stage.appendChild(iframe);
           frameMap.set(layer.id, iframe);
-        } else if (iframe.dataset.overlayId !== layer.overlayId) {
-          iframe.dataset.overlayId = layer.overlayId;
+        }
+        if (external) {
+          iframe.setAttribute("sandbox", "allow-scripts allow-same-origin");
+          iframe.setAttribute("referrerpolicy", "no-referrer");
+        } else {
+          iframe.removeAttribute("sandbox");
+          iframe.removeAttribute("referrerpolicy");
+        }
+        if (iframe.dataset.src !== targetSrc) {
+          iframe.dataset.src = targetSrc;
           iframe.src = targetSrc;
         }
 
