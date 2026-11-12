@@ -28,3 +28,4 @@ config.yaml
 
 # Pentest logs
 pentest_log
+src-tauri/backend/

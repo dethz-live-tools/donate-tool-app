@@ -1,7 +1,7 @@
 {
   "name": "donate-socket",
   "private": true,
-  "version": "0.1.9",
+  "version": "0.1.10",
   "type": "module",
   "scripts": {
     "dev": "bun dev.ts",
@@ -9,6 +9,7 @@
     "dev:server": "bun --watch server/index.ts",
     "server": "bun server/index.ts",
     "build": "tsc && vite build",
+    "build:backend": "bun scripts/build-backend.ts",
     "preview": "vite preview",
     "tauri": "tauri",
     "dev:ui": "tauri dev"

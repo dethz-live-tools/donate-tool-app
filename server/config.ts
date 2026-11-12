@@ -1,4 +1,5 @@
 import fs from "node:fs";
+import { randomUUID } from "node:crypto";
 import path from "node:path";
 import process from "node:process";
 import YAML from "yaml";
@@ -105,39 +106,57 @@ function normalizeStudioProfiles(raw: unknown): StudioProfile[] {
     }));
 }
 
-export const CONFIG_FILE = path.resolve(process.cwd(), "config.yaml");
-export const LEGACY_CONFIG_FILE = path.resolve(process.cwd(), "connector-config.json");
+export const CONFIG_FILE = path.resolve(process.env.DONATE_CONFIG_FILE || "config.yaml");
+export const LEGACY_CONFIG_FILE = path.join(path.dirname(CONFIG_FILE), "connector-config.json");
+
+function initializeConfig() {
+  const template = process.env.DONATE_CONFIG_TEMPLATE;
+  if (!template || fs.existsSync(CONFIG_FILE) || fs.existsSync(LEGACY_CONFIG_FILE)) return;
+  const raw = fs.readFileSync(template, "utf-8");
+  fs.mkdirSync(path.dirname(CONFIG_FILE), { recursive: true, mode: 0o700 });
+  try {
+    fs.writeFileSync(CONFIG_FILE, raw, { encoding: "utf-8", flag: "wx", mode: 0o600 });
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code !== "EEXIST") throw error;
+  }
+}
 
 export function loadConfig(): AppConfig {
+  return readConfig(false);
+}
+
+function readConfig(throwOnError: boolean): AppConfig {
   try {
+    initializeConfig();
     if (fs.existsSync(CONFIG_FILE)) {
       const raw = fs.readFileSync(CONFIG_FILE, "utf-8");
       const parsed = YAML.parse(raw);
-      if (parsed) {
-        return {
-          username: String(parsed.tiktok?.username || "").trim(),
-          webhookUri: String(parsed.webhook?.uri || "").trim(),
-          sendTtsWebhook: Boolean(parsed.webhook?.send_tts ?? parsed.tts?.send_webhook ?? false),
-          spotifyClientId: String(parsed.spotify?.client_id || "").trim(),
-          spotifyClientSecret: String(parsed.spotify?.client_secret || "").trim(),
-          spotifyRefreshToken: String(parsed.spotify?.refresh_token || "").trim(),
-          tts: {
-            enabled: Boolean(parsed.tts?.enabled ?? false),
-            voice: String(parsed.tts?.voice || "th-TH-NiwatNeural").trim(),
-            volume: typeof parsed.tts?.volume === "number" ? parsed.tts.volume : 1.0,
-            rate: typeof parsed.tts?.rate === "number" ? parsed.tts.rate : 1.0,
-            pitch: typeof parsed.tts?.pitch === "number" ? parsed.tts.pitch : 1.0,
-            template: String(parsed.tts?.template || "{nickname} says {comment}"),
-            ignoreBotCommands: parsed.tts?.ignore_bot_commands !== false,
-            sendWebhook: Boolean(parsed.tts?.send_webhook ?? parsed.webhook?.send_tts ?? false),
-          },
-          ui: {
-            minimizedBoxes: parsed.ui?.minimized_boxes || {},
-          },
-          studio: normalizeStudioScene(parsed.studio),
-          studioProfiles: normalizeStudioProfiles(parsed.studioProfiles),
-        };
+      if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+        throw new Error("config.yaml must contain a YAML mapping");
       }
+      return {
+        username: String(parsed.tiktok?.username || "").trim(),
+        webhookUri: String(parsed.webhook?.uri || "").trim(),
+        sendTtsWebhook: Boolean(parsed.webhook?.send_tts ?? parsed.tts?.send_webhook ?? false),
+        spotifyClientId: String(parsed.spotify?.client_id || "").trim(),
+        spotifyClientSecret: String(parsed.spotify?.client_secret || "").trim(),
+        spotifyRefreshToken: String(parsed.spotify?.refresh_token || "").trim(),
+        tts: {
+          enabled: Boolean(parsed.tts?.enabled ?? false),
+          voice: String(parsed.tts?.voice || "th-TH-NiwatNeural").trim(),
+          volume: typeof parsed.tts?.volume === "number" ? parsed.tts.volume : 1.0,
+          rate: typeof parsed.tts?.rate === "number" ? parsed.tts.rate : 1.0,
+          pitch: typeof parsed.tts?.pitch === "number" ? parsed.tts.pitch : 1.0,
+          template: String(parsed.tts?.template || "{nickname} says {comment}"),
+          ignoreBotCommands: parsed.tts?.ignore_bot_commands !== false,
+          sendWebhook: Boolean(parsed.tts?.send_webhook ?? parsed.webhook?.send_tts ?? false),
+        },
+        ui: {
+          minimizedBoxes: parsed.ui?.minimized_boxes || {},
+        },
+        studio: normalizeStudioScene(parsed.studio),
+        studioProfiles: normalizeStudioProfiles(parsed.studioProfiles),
+      };
     } else if (fs.existsSync(LEGACY_CONFIG_FILE)) {
       const raw = fs.readFileSync(LEGACY_CONFIG_FILE, "utf-8");
       const data = JSON.parse(raw);
@@ -168,6 +187,7 @@ export function loadConfig(): AppConfig {
       return migrated;
     }
   } catch (e) {
+    if (throwOnError) throw e;
     console.error("[config] Failed to load config.yaml:", e);
   }
   return {
@@ -205,8 +225,9 @@ export function getPublicConfig(config: AppConfig): AppConfig {
 
 export function saveConfig(updates: Partial<AppConfig>) {
   try {
+    initializeConfig();
     const exists = fs.existsSync(CONFIG_FILE);
-    const existing = exists ? loadConfig() : {
+    const existing = exists ? readConfig(true) : {
       username: "",
       webhookUri: "",
       sendTtsWebhook: false,
@@ -298,10 +319,14 @@ export function saveConfig(updates: Partial<AppConfig>) {
     };
 
     const serialized = YAML.stringify(yamlData, { indent: 2 });
-    fs.writeFileSync(CONFIG_FILE, serialized, {
-      encoding: "utf-8",
-      flag: "w",
-    });
+    fs.mkdirSync(path.dirname(CONFIG_FILE), { recursive: true, mode: 0o700 });
+    const temporaryFile = `${CONFIG_FILE}.${randomUUID()}.tmp`;
+    try {
+      fs.writeFileSync(temporaryFile, serialized, { encoding: "utf-8", flag: "wx", mode: 0o600 });
+      fs.renameSync(temporaryFile, CONFIG_FILE);
+    } finally {
+      fs.rmSync(temporaryFile, { force: true });
+    }
     console.log(`[config] ${exists ? "Overwrote existing" : "Created and wrote"} ${CONFIG_FILE}`);
     return true;
   } catch (e) {

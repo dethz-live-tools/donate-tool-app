@@ -76,13 +76,16 @@ export async function handleStatusRoutes(
   if (url.pathname === "/api/config" && req.method === "POST") {
     try {
       const parsed = await parseJsonBody(req);
+      if (!saveConfig(parsed)) {
+        sendJson(res, 500, { success: false, error: "Failed to save config.yaml" });
+        return true;
+      }
       if (parsed.username !== undefined) state.username = String(parsed.username || "").trim();
       if (parsed.webhookUri !== undefined) {
         state.webhookUri = String(parsed.webhookUri || "").trim();
         resetSpotifyWebhookTracker();
       }
 
-      saveConfig(parsed);
       state.config = loadConfig();
       broadcastState();
       sendJson(res, 200, { success: true, message: "Configuration saved to config.yaml", config: getPublicConfig(state.config) });

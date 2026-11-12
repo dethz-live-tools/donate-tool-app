@@ -7,7 +7,6 @@ This guide covers local development, multi-platform builds, and automated GitHub
 ## 1. Prerequisites
 
 - **Bun**: v1.1.0 or higher (`curl -fsSL https://bun.sh/install | bash`)
-- **Node.js**: v20 or higher (LTS recommended)
 - **Rust**: Stable toolchain (`curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh`)
 - **Tauri CLI**: Installed automatically via project devDependencies (`bun run tauri`)
 - **OS-Specific Build Tools**:
@@ -65,6 +64,18 @@ Bundles will be generated in `src-tauri/target/release/bundle/`:
 - **macOS**: `.dmg` installer and `.app` bundle in `bundle/dmg/` and `bundle/macos/`
 - **Linux**: `.deb` and `.AppImage` in `bundle/deb/` and `bundle/appimage/`
 - **Windows**: `.msi` and setup executable in `bundle/msi/` and `bundle/nsis/`
+
+### Packaged configuration
+
+Desktop releases bundle a standalone backend and a credential-free `config.example.yaml`. On first launch, the backend copies that template to a writable `config.yaml` in the application's data directory. Reads and settings updates use that same YAML file on every launch, regardless of the launch directory.
+
+- macOS: `~/Library/Application Support/zip.kizuna.donate/config.yaml`
+- Windows: `%APPDATA%\zip.kizuna.donate\config.yaml`
+- Linux: `~/.local/share/zip.kizuna.donate/config.yaml` (or the directory selected by `XDG_DATA_HOME`).
+
+Existing YAML files are not replaced by bundled defaults. To move an existing development configuration into the desktop app, close the app and copy your `config.yaml` to this location before launching. Keep it private: it can contain Spotify credentials and private overlay URLs. Back up an existing destination before replacing it.
+
+Development and standalone server commands continue using the working directory's `config.yaml`. For a standalone server with a fixed location, set `DONATE_CONFIG_FILE` to the absolute YAML path. `DONATE_CONFIG_TEMPLATE` optionally supplies first-run defaults; it never replaces an existing file. Configuration writes use atomic replacement, and the settings API reports failed saves instead of claiming success.
 
 ---
 

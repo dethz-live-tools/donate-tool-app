@@ -1,12 +1,12 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
   "productName": "donate-socket",
-  "version": "0.1.9",
+  "version": "0.1.10",
   "identifier": "zip.kizuna.donate",
   "build": {
     "beforeDevCommand": "bun run dev",
     "devUrl": "http://localhost:1420",
-    "beforeBuildCommand": "bun run build",
+    "beforeBuildCommand": "bun run build && bun run build:backend",
     "frontendDist": "../dist"
   },
   "app": {
@@ -24,7 +24,11 @@
   "bundle": {
     "active": true,
     "targets": "all",
-    "resources": ["../overlays/**/*"],
+    "resources": {
+      "../overlays/": "overlays/",
+      "backend/": "backend/",
+      "../config.example.yaml": "config.example.yaml"
+    },
     "icon": [
       "icons/32x32.png",
       "icons/128x128.png",
