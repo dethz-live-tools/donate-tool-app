@@ -90,7 +90,7 @@ jobs:
             args: ''
           - platform: 'windows-latest'
             arch: 'Windows (x86_64)'
-            args: '--bundles nsis,msi,portable'
+            args: ''
 
     runs-on: ${{ matrix.platform }}
     steps:
