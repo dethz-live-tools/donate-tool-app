@@ -9,3 +9,10 @@ spotify:
   client_id: "" # Spotify Developer App Client ID
   client_secret: "" # Spotify Developer App Client Secret
   refresh_token: "" # Generated automatically upon OAuth connection
+
+tts:
+  # allowed_roles: [owner, moderator, subscriber, follower, guest] # Who may trigger TTS read-out (all by default)
+
+# Chat bot commands (!sr / !songrequest)
+commands:
+  # allowed_roles: [owner, moderator, subscriber, follower, guest] # Who may run bot commands (all by default)

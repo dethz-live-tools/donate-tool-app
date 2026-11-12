@@ -1,3 +1,6 @@
+export type ChatRole = "owner" | "moderator" | "subscriber" | "follower" | "guest";
+export const ALL_ROLES: ChatRole[] = ["owner", "moderator", "subscriber", "follower", "guest"];
+
 export interface AppConfig {
   username: string;
   webhookUri: string;
@@ -14,6 +17,10 @@ export interface AppConfig {
     template?: string;
     ignoreBotCommands?: boolean;
     sendWebhook?: boolean;
+    allowedRoles?: ChatRole[];
+  };
+  commands?: {
+    allowedRoles?: ChatRole[];
   };
   ui?: {
     minimizedBoxes?: Record<string, boolean>;
@@ -161,6 +168,7 @@ export interface TikTokChatMessage {
   nickname: string;
   comment: string;
   profilePictureUrl: string | null;
+  role?: ChatRole;
   timestamp: number;
 }
 

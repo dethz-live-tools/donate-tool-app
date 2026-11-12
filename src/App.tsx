@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from "react";
+import React, { useState, useEffect, useRef, useCallback } from "react";
 import "./App.css";
 import {
   CurrentSongItem,
@@ -18,8 +18,23 @@ import { DashboardTab } from "./components/DashboardTab";
 import { ConfigTab } from "./components/ConfigTab";
 import { OverlaysTab } from "./components/OverlaysTab";
 import { StudioTab } from "./components/StudioTab";
+import { AboutTab } from "./components/AboutTab";
 
 const API_BASE = "http://127.0.0.1:3001";
+const UPDATE_REPO = "dethz-live-tools/donate-tool-app";
+
+// Strip leading "v" and compare as numeric parts (0.1.10 > 0.1.9, non-numeric => 0)
+function isNewer(tag: string, current: string): boolean {
+  const parse = (v: string) => v.replace(/^v/, "").split(".").map((n) => parseInt(n, 10) || 0);
+  const a = parse(tag);
+  const b = parse(current);
+  for (let i = 0; i < Math.max(a.length, b.length); i++) {
+    const x = a[i] ?? 0;
+    const y = b[i] ?? 0;
+    if (x !== y) return x > y;
+  }
+  return false;
+}
 
 async function openAuthorizeUrl(url: string) {
   try {
@@ -31,7 +46,7 @@ async function openAuthorizeUrl(url: string) {
 }
 
 export default function App() {
-  const [currentPage, setCurrentPage] = useState<"dashboard" | "config" | "overlays" | "studio">(() => {
+  const [currentPage, setCurrentPage] = useState<"dashboard" | "config" | "overlays" | "studio" | "about">(() => {
     const query = new URLSearchParams(window.location.search);
     return query.get("page") === "studio" || query.has("profile") ? "studio" : "dashboard";
   });
@@ -80,6 +95,33 @@ export default function App() {
   });
 
   const eventSourceRef = useRef<EventSource | null>(null);
+
+  // Update check against GitHub releases
+  const [latestRelease, setLatestRelease] = useState<{ tag: string; url: string } | null>(null);
+  const [dismissedUpdate, setDismissedUpdate] = useState(false);
+  const [updateChecked, setUpdateChecked] = useState(false);
+  const [checkingUpdate, setCheckingUpdate] = useState(false);
+  const [updateError, setUpdateError] = useState<string | null>(null);
+
+  const checkForUpdate = useCallback(async () => {
+    setCheckingUpdate(true);
+    setUpdateError(null);
+    try {
+      const res = await fetch(`https://api.github.com/repos/${UPDATE_REPO}/releases/latest`);
+      if (!res.ok) throw new Error(`GitHub API ${res.status}`);
+      const data = await res.json();
+      setLatestRelease(isNewer(data.tag_name, __APP_VERSION__) ? { tag: data.tag_name, url: data.html_url } : null);
+    } catch (err: unknown) {
+      setUpdateError(err instanceof Error ? err.message : "update check failed");
+    } finally {
+      setCheckingUpdate(false);
+      setUpdateChecked(true);
+    }
+  }, []);
+
+  useEffect(() => {
+    checkForUpdate();
+  }, [checkForUpdate]);
 
   // Initial load & SSE connection
   useEffect(() => {
@@ -708,7 +750,43 @@ export default function App() {
           </div>
         )}
 
-        {currentPage === "dashboard" ? (
+        {latestRelease && !dismissedUpdate && (
+          <div className="alert-banner info">
+            <span>[UPDATE]</span>
+            <span>
+              {latestRelease.tag} is available (you have {__APP_VERSION__}){" "}
+              <a
+                href="#"
+                onClick={(e) => {
+                  e.preventDefault();
+                  (async () => {
+                    try {
+                      const { openUrl } = await import("@tauri-apps/plugin-opener");
+                      await openUrl(latestRelease.url);
+                    } catch {
+                      window.open(latestRelease.url, "_blank", "noopener");
+                    }
+                  })();
+                }}
+              >
+                download
+              </a>
+            </span>
+            <button type="button" onClick={() => setDismissedUpdate(true)}>
+              DISMISS
+            </button>
+          </div>
+        )}
+
+        {currentPage === "about" ? (
+          <AboutTab
+            updateChecked={updateChecked}
+            checkingUpdate={checkingUpdate}
+            updateError={updateError}
+            latestRelease={latestRelease}
+            onCheckUpdate={checkForUpdate}
+          />
+        ) : currentPage === "dashboard" ? (
           <DashboardTab
             username={username}
             webhookUri={webhookUri}

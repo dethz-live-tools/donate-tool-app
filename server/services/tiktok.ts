@@ -6,7 +6,7 @@ import {
 } from "tiktok-live-connector";
 import { loadConfig, saveConfig } from "../config.ts";
 import { broadcastChat, broadcastState, spotifyState, state } from "../state.ts";
-import type { TikTokChatMessage, TikTokGiftPayload, TikTokTtsPayload } from "../types.ts";
+import type { ChatRole, TikTokChatMessage, TikTokGiftPayload, TikTokTtsPayload } from "../types.ts";
 import { requestSong } from "./spotify.ts";
 import { sendWebhook } from "./webhook.ts";
 
@@ -26,6 +26,19 @@ try {
   };
 } catch (e) {
   console.warn("[tiktok] RouteConfig signature patch skipped:", e);
+}
+
+function chatRole(data: any): ChatRole {
+  const ui = data.userIdentity;
+  if (ui?.isAnchor) return "owner";
+  if (ui?.isModeratorOfAnchor) return "moderator";
+  if (ui?.isSubscriberOfAnchor) return "subscriber";
+  if (ui?.isFollowerOfAnchor === true || data.user?.isFollower) return "follower";
+  return "guest";
+}
+
+function roleAllowed(allowed: ChatRole[] | undefined, role: ChatRole): boolean {
+  return !allowed || allowed.length === 0 || allowed.includes(role);
 }
 
 let activeConnection: TikTokLiveConnection | null = null;
@@ -144,6 +157,8 @@ export async function connectLive(username?: string, webhookUri?: string) {
         data.nickname ||
         uniqueId;
 
+      const role = chatRole(data);
+
       const comment = String(
         data.content ||
         data.comment ||
@@ -164,6 +179,7 @@ export async function connectLive(username?: string, webhookUri?: string) {
         nickname,
         comment,
         profilePictureUrl,
+        role,
         timestamp: Date.now(),
       };
 
@@ -181,7 +197,11 @@ export async function connectLive(username?: string, webhookUri?: string) {
       const ignoreBotCommands = Boolean(cfg.tts?.ignoreBotCommands ?? true);
       const isCmd = comment.startsWith("!");
 
-      if (sendTtsWebhook && (!ignoreBotCommands || !isCmd)) {
+      if (
+        sendTtsWebhook &&
+        roleAllowed(cfg.tts?.allowedRoles, role) &&
+        (!ignoreBotCommands || !isCmd)
+      ) {
         const template = cfg.tts?.template || "{nickname} says {comment}";
         const speechText = template
           .replace("{nickname}", nickname)
@@ -207,7 +227,11 @@ export async function connectLive(username?: string, webhookUri?: string) {
       const lower = comment.toLowerCase();
       const srPrefixes = ["!sr ", "!songrequest ", "!request ", "!song "];
       const matchedPrefix = srPrefixes.find((p) => lower.startsWith(p));
-      if (matchedPrefix && spotifyState.connected) {
+      if (
+        matchedPrefix &&
+        roleAllowed(cfg.commands?.allowedRoles, role) &&
+        spotifyState.connected
+      ) {
         const query = comment.slice(matchedPrefix.length).trim();
         if (query) {
           requestSong(query, uniqueId, "tiktok_chat").catch((err) => {
@@ -250,6 +274,7 @@ export async function connectLive(username?: string, webhookUri?: string) {
         data.diamondCount ??
         data.diamond_count ??
         data.extendedGiftInfo?.diamond_count ??
+        data.gift?.diamondCount ??
         data.gift?.diamond_count ??
         1
       ) || 1;

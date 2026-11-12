@@ -1,6 +1,8 @@
 import { defineConfig, type Plugin } from "vite";
 import react from "@vitejs/plugin-react";
 // @ts-expect-error type error without @types/node package
+import pkg from "./package.json" with { type: "json" };
+// @ts-expect-error type error without @types/node package
 import process from "node:process";
 // @ts-expect-error type error without @types/node package
 import { spawn } from "node:child_process";
@@ -58,6 +60,9 @@ function bridgePlugin(): Plugin {
 // https://vite.dev/config/
 export default defineConfig(() => ({
   plugins: [react(), bridgePlugin()],
+  define: {
+    __APP_VERSION__: JSON.stringify(pkg.version),
+  },
 
   // Vite options tailored for Tauri development and only applied in `tauri dev` or `tauri build`
   //

@@ -299,6 +299,29 @@ h3 {
   align-items: center;
 }
 
+/* About Page */
+.about-card {
+  max-width: 560px;
+}
+
+.about-info {
+  display: grid;
+  grid-template-columns: max-content 1fr;
+  gap: 8px 16px;
+  margin: 16px 0;
+}
+
+.about-info dt {
+  color: var(--ctp-subtext0);
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+}
+
+.about-info dd {
+  margin: 0;
+}
+
 /* Form Inputs */
 .form-group {
   display: flex;
@@ -659,34 +682,6 @@ h3 {
   border-color: var(--ctp-overlay0);
   color: var(--ctp-overlay0);
   cursor: not-allowed;
-}
-
-.spotify-progress-wrap {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-  margin-top: 6px;
-}
-
-.spotify-progress-bar {
-  width: 100%;
-  height: 6px;
-  background-color: var(--ctp-surface0);
-  border: 1px solid var(--ctp-surface1);
-  position: relative;
-}
-
-.spotify-progress-fill {
-  height: 100%;
-  background-color: var(--accent-primary);
-}
-
-.spotify-time-row {
-  display: flex;
-  justify-content: space-between;
-  font-family: var(--font-mono);
-  font-size: 11px;
-  color: var(--text-muted);
 }
 
 .spotify-setup-panel {

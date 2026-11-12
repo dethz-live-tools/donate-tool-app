@@ -797,7 +797,8 @@ export async function fetchCurrentlyPlaying() {
 
 export function startSpotifyPolling() {
   if (spotifyPollTimer) clearInterval(spotifyPollTimer);
-  spotifyPollTimer = setInterval(fetchCurrentlyPlaying, 3000);
+  // shortcut: 15s poll (was 3s) cuts /me/player calls 5x; track-change webhook now fires up to 15s late
+  spotifyPollTimer = setInterval(fetchCurrentlyPlaying, 15000);
   fetchCurrentlyPlaying();
 
   // If credentials configured, ensure auto-refresh is active

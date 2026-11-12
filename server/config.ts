@@ -3,8 +3,16 @@ import { randomUUID } from "node:crypto";
 import path from "node:path";
 import process from "node:process";
 import YAML from "yaml";
-import type { AppConfig, StudioLayer, StudioProfile, StudioScene } from "./types.ts";
+import type { AppConfig, ChatRole, StudioLayer, StudioProfile, StudioScene } from "./types.ts";
 import { PORT } from "./utils.ts";
+
+const ALL_ROLES: ChatRole[] = ["owner", "moderator", "subscriber", "follower", "guest"];
+
+function normalizeRoles(raw: unknown): ChatRole[] | undefined {
+  if (!Array.isArray(raw)) return undefined;
+  const roles = raw.filter((r): r is ChatRole => typeof r === "string" && (ALL_ROLES as string[]).includes(r));
+  return roles.length > 0 ? roles : undefined;
+}
 
 const DEFAULT_STUDIO_SCENE: StudioScene = {
   width: 1920,
@@ -150,7 +158,9 @@ function readConfig(throwOnError: boolean): AppConfig {
           template: String(parsed.tts?.template || "{nickname} says {comment}"),
           ignoreBotCommands: parsed.tts?.ignore_bot_commands !== false,
           sendWebhook: Boolean(parsed.tts?.send_webhook ?? parsed.webhook?.send_tts ?? false),
+          ...(normalizeRoles(parsed.tts?.allowed_roles) ? { allowedRoles: normalizeRoles(parsed.tts?.allowed_roles) } : {}),
         },
+        ...(normalizeRoles(parsed.commands?.allowed_roles) ? { commands: { allowedRoles: normalizeRoles(parsed.commands?.allowed_roles) } } : {}),
         ui: {
           minimizedBoxes: parsed.ui?.minimized_boxes || {},
         },
@@ -276,7 +286,13 @@ export function saveConfig(updates: Partial<AppConfig>) {
         ...existing.tts,
         ...updates.tts,
         sendWebhook: sendTts,
+        ...(normalizeRoles(updates.tts?.allowedRoles ?? existing.tts?.allowedRoles)
+          ? { allowedRoles: normalizeRoles(updates.tts?.allowedRoles ?? existing.tts?.allowedRoles) }
+          : {}),
       },
+      ...(normalizeRoles(updates.commands?.allowedRoles ?? existing.commands?.allowedRoles)
+        ? { commands: { allowedRoles: normalizeRoles(updates.commands?.allowedRoles ?? existing.commands?.allowedRoles) } }
+        : {}),
       ui: {
         minimizedBoxes: updates.ui?.minimizedBoxes !== undefined
           ? { ...existing.ui?.minimizedBoxes, ...updates.ui.minimizedBoxes }
@@ -310,7 +326,9 @@ export function saveConfig(updates: Partial<AppConfig>) {
         template: merged.tts?.template || "{nickname} says {comment}",
         ignore_bot_commands: Boolean(merged.tts?.ignoreBotCommands ?? true),
         send_webhook: Boolean(merged.tts?.sendWebhook ?? merged.sendTtsWebhook),
+        ...(merged.tts?.allowedRoles ? { allowed_roles: merged.tts.allowedRoles } : {}),
       },
+      ...(merged.commands?.allowedRoles ? { commands: { allowed_roles: merged.commands.allowedRoles } } : {}),
       ui: {
         minimized_boxes: merged.ui?.minimizedBoxes || {},
       },

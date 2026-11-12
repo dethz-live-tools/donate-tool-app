@@ -1,5 +1,7 @@
 import React from "react";
 import {
+  ALL_ROLES,
+  ChatRole,
   CurrentSongItem,
   LogEntry,
   SongRequestItem,
@@ -324,6 +326,20 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({
       return false;
     }
   });
+  const [ttsAllowedRoles, setTtsAllowedRoles] = React.useState<ChatRole[]>(() => {
+    try {
+      const saved = localStorage.getItem("donate_socket_tts_roles");
+      if (saved) {
+        const parsed: unknown = JSON.parse(saved);
+        if (Array.isArray(parsed)) {
+          const valid = parsed.filter((r): r is ChatRole => typeof r === "string" && ALL_ROLES.includes(r as ChatRole));
+          if (valid.length > 0) return valid;
+        }
+      }
+    } catch {}
+    return ALL_ROLES;
+  });
+  const [commandsAllowedRoles, setCommandsAllowedRoles] = React.useState<ChatRole[]>(ALL_ROLES);
   const [showTtsSettings, setShowTtsSettings] = React.useState<boolean>(false);
   const [availableVoices, setAvailableVoices] = React.useState<EdgeTtsVoice[]>(FALLBACK_EDGE_VOICES);
 
@@ -391,6 +407,12 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({
           if (typeof cfg.tts.sendWebhook === "boolean" && !userModifiedFieldsRef.current.has("sendWebhook")) {
             setSendTtsWebhook(cfg.tts.sendWebhook);
           }
+          if (Array.isArray(cfg.tts.allowedRoles) && cfg.tts.allowedRoles.length > 0 && !userModifiedFieldsRef.current.has("ttsRoles")) {
+            setTtsAllowedRoles(cfg.tts.allowedRoles);
+          }
+        }
+        if (Array.isArray(cfg.commands?.allowedRoles) && cfg.commands.allowedRoles.length > 0 && !userModifiedFieldsRef.current.has("commandsRoles")) {
+          setCommandsAllowedRoles(cfg.commands.allowedRoles);
         }
         if (typeof cfg.sendTtsWebhook === "boolean" && !userModifiedFieldsRef.current.has("sendWebhook")) {
           setSendTtsWebhook(cfg.sendTtsWebhook);
@@ -491,6 +513,7 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({
     if (!lastSpokenChatIdRef.current) {
       const latest = recentChats[0];
       lastSpokenChatIdRef.current = latest.id;
+      if (!latest.role || !ttsAllowedRoles.includes(latest.role)) return;
       if (ignoreBotCommands && latest.comment.startsWith("!")) return;
       const text = ttsTemplate
         .replace("{nickname}", latest.nickname || latest.uniqueId)
@@ -510,6 +533,7 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({
       lastSpokenChatIdRef.current = recentChats[0].id;
       // Play oldest to newest
       for (const c of newChats.reverse()) {
+        if (c.role && !ttsAllowedRoles.includes(c.role)) continue;
         if (ignoreBotCommands && c.comment.startsWith("!")) continue;
         const text = ttsTemplate
           .replace("{nickname}", c.nickname || c.uniqueId)
@@ -518,7 +542,7 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({
         speakMessage(text);
       }
     }
-  }, [recentChats, ttsEnabled, ttsTemplate, ignoreBotCommands, speakMessage]);
+  }, [recentChats, ttsEnabled, ttsTemplate, ignoreBotCommands, ttsAllowedRoles, speakMessage]);
 
   const toggleTts = () => {
     const next = !ttsEnabled;
@@ -559,10 +583,6 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({
 
   const [payloadSpecTab, setPayloadSpecTab] = React.useState<"tiktok" | "tts" | "spotify">("tiktok");
   const track = spotify.currentTrack;
-  const progressPercent =
-    track && track.durationMs > 0
-      ? Math.min(100, Math.max(0, (track.progressMs / track.durationMs) * 100))
-      : 0;
 
   return (
     <>
@@ -816,19 +836,6 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({
                       <span>{track.playlistName}</span>
                     </div>
                   )}
-
-                  <div className="spotify-progress-wrap">
-                    <div className="spotify-progress-bar">
-                      <div
-                        className="spotify-progress-fill"
-                        style={{ width: `${progressPercent}%` }}
-                      ></div>
-                    </div>
-                    <div className="spotify-time-row">
-                      <span>{formatMs(track.progressMs)}</span>
-                      <span>{formatMs(track.durationMs)}</span>
-                    </div>
-                  </div>
 
                   {/* Player Controls */}
                   <div className="spotify-controls">
@@ -1481,6 +1488,57 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({
                     />
                     <span>Send incoming chats to Webhook (event: &quot;tts&quot;)</span>
                   </label>
+                </div>
+
+                {/* User Role Access: TTS speech */}
+                <div className="tts-setting-item">
+                  <label className="tts-setting-label">
+                    <span>SPEAK CHATS FROM</span>
+                  </label>
+                  <div style={{ display: "flex", flexWrap: "wrap", gap: "8px" }}>
+                    {ALL_ROLES.map((r) => (
+                      <label key={`tts-${r}`} style={{ display: "flex", alignItems: "center", gap: "6px", cursor: "pointer", fontSize: "12px" }}>
+                        <input
+                          type="checkbox"
+                          checked={ttsAllowedRoles.includes(r)}
+                          onChange={() => {
+                            const next = ttsAllowedRoles.includes(r) ? ttsAllowedRoles.filter((x) => x !== r) : [...ttsAllowedRoles, r];
+                            userModifiedFieldsRef.current.add("ttsRoles");
+                            setTtsAllowedRoles(next);
+                            try {
+                              localStorage.setItem("donate_socket_tts_roles", JSON.stringify(next));
+                            } catch {}
+                            saveAppConfig({ tts: { allowedRoles: next } }, true);
+                          }}
+                        />
+                        {r.toUpperCase()}
+                      </label>
+                    ))}
+                  </div>
+                </div>
+
+                {/* User Role Access: bot commands */}
+                <div className="tts-setting-item">
+                  <label className="tts-setting-label">
+                    <span>BOT COMMANDS FROM (!sr / !songrequest)</span>
+                  </label>
+                  <div style={{ display: "flex", flexWrap: "wrap", gap: "8px" }}>
+                    {ALL_ROLES.map((r) => (
+                      <label key={`cmd-${r}`} style={{ display: "flex", alignItems: "center", gap: "6px", cursor: "pointer", fontSize: "12px" }}>
+                        <input
+                          type="checkbox"
+                          checked={commandsAllowedRoles.includes(r)}
+                          onChange={() => {
+                            const next = commandsAllowedRoles.includes(r) ? commandsAllowedRoles.filter((x) => x !== r) : [...commandsAllowedRoles, r];
+                            userModifiedFieldsRef.current.add("commandsRoles");
+                            setCommandsAllowedRoles(next);
+                            saveAppConfig({ commands: { allowedRoles: next } }, true);
+                          }}
+                        />
+                        {r.toUpperCase()}
+                      </label>
+                    ))}
+                  </div>
                 </div>
               </div>
             )}
