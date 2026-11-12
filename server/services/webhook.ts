@@ -39,7 +39,13 @@ export async function sendWebhook(
   payload: WebhookPayload,
   type: "gift" | "test" | "system" | "spotify" | "tts" = "gift"
 ): Promise<LogEntry> {
-  const uri = String(state.webhookUri || "").trim();
+  const uri = String(
+    (type === "tts"
+      ? state.webhookUriChat || state.webhookUri
+      : type === "spotify"
+        ? state.webhookUriSpotify || state.webhookUri
+        : state.webhookUri) || ""
+  ).trim();
 
   if (!uri) {
     const entry: LogEntry = {

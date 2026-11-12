@@ -24,6 +24,8 @@ export function getSpotifyPublicState(): SpotifyInfo {
 export const state: ServerState = {
   username: initialConfig.username,
   webhookUri: initialConfig.webhookUri,
+  webhookUriChat: initialConfig.webhookUriChat,
+  webhookUriSpotify: initialConfig.webhookUriSpotify,
   status: "disconnected",
   roomId: null,
   error: null,
@@ -61,6 +63,8 @@ export function broadcastState() {
   const data = JSON.stringify({
     username: state.username,
     webhookUri: state.webhookUri,
+    webhookUriChat: state.webhookUriChat,
+    webhookUriSpotify: state.webhookUriSpotify,
     status: state.status,
     roomId: state.roomId,
     error: state.error,

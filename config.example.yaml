@@ -3,7 +3,9 @@ tiktok:
   username: "" # Streamer uniqueId (with or without @)
 
 webhook:
-  uri: "" # Target webhook endpoint receiving gift payload
+  uri: "" # Target webhook endpoint receiving gift payload (gift only)
+  uri_chat: "" # Optional: separate endpoint for TikTok chat/TTS events (falls back to uri)
+  uri_spotify: "" # Optional: separate endpoint for Spotify song-change events (falls back to uri)
 
 spotify:
   client_id: "" # Spotify Developer App Client ID

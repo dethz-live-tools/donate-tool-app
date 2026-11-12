@@ -145,6 +145,8 @@ function readConfig(throwOnError: boolean): AppConfig {
       return {
         username: String(parsed.tiktok?.username || "").trim(),
         webhookUri: String(parsed.webhook?.uri || "").trim(),
+        webhookUriChat: String(parsed.webhook?.uri_chat || "").trim(),
+        webhookUriSpotify: String(parsed.webhook?.uri_spotify || "").trim(),
         sendTtsWebhook: Boolean(parsed.webhook?.send_tts ?? parsed.tts?.send_webhook ?? false),
         spotifyClientId: String(parsed.spotify?.client_id || "").trim(),
         spotifyClientSecret: String(parsed.spotify?.client_secret || "").trim(),
@@ -173,6 +175,8 @@ function readConfig(throwOnError: boolean): AppConfig {
       const migrated: AppConfig = {
         username: String(data.username || "").trim(),
         webhookUri: String(data.webhookUri || "").trim(),
+        webhookUriChat: "",
+        webhookUriSpotify: "",
         sendTtsWebhook: false,
         spotifyClientId: String(data.spotifyClientId || "").trim(),
         spotifyClientSecret: String(data.spotifyClientSecret || "").trim(),
@@ -203,6 +207,8 @@ function readConfig(throwOnError: boolean): AppConfig {
   return {
     username: "",
     webhookUri: "",
+    webhookUriChat: "",
+    webhookUriSpotify: "",
     sendTtsWebhook: false,
     spotifyClientId: "",
     spotifyClientSecret: "",
@@ -268,6 +274,14 @@ export function saveConfig(updates: Partial<AppConfig>) {
     const merged: AppConfig = {
       username: updates.username !== undefined ? updates.username : existing.username,
       webhookUri: updates.webhookUri !== undefined ? updates.webhookUri : existing.webhookUri,
+      webhookUriChat:
+        updates.webhookUriChat !== undefined
+          ? updates.webhookUriChat
+          : existing.webhookUriChat || "",
+      webhookUriSpotify:
+        updates.webhookUriSpotify !== undefined
+          ? updates.webhookUriSpotify
+          : existing.webhookUriSpotify || "",
       sendTtsWebhook: sendTts,
       spotifyClientId: updates.spotifyClientId !== undefined ? updates.spotifyClientId : existing.spotifyClientId,
       spotifyClientSecret:
@@ -310,6 +324,8 @@ export function saveConfig(updates: Partial<AppConfig>) {
       },
       webhook: {
         uri: merged.webhookUri || "",
+        uri_chat: merged.webhookUriChat || "",
+        uri_spotify: merged.webhookUriSpotify || "",
         send_tts: Boolean(merged.tts?.sendWebhook ?? merged.sendTtsWebhook),
       },
       spotify: {

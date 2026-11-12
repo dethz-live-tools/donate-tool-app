@@ -6,6 +6,10 @@ interface ConfigTabProps {
   setUsername: (v: string) => void;
   webhookUri: string;
   setWebhookUri: (v: string) => void;
+  webhookUriChat: string;
+  setWebhookUriChat: (v: string) => void;
+  webhookUriSpotify: string;
+  setWebhookUriSpotify: (v: string) => void;
   status: "disconnected" | "connecting" | "connected" | "error";
   loading: boolean;
   testing: boolean;
@@ -31,6 +35,10 @@ export const ConfigTab: React.FC<ConfigTabProps> = ({
   setUsername,
   webhookUri,
   setWebhookUri,
+  webhookUriChat,
+  setWebhookUriChat,
+  webhookUriSpotify,
+  setWebhookUriSpotify,
   status,
   loading,
   testing,
@@ -82,7 +90,7 @@ export const ConfigTab: React.FC<ConfigTabProps> = ({
 
           <div className="form-group">
             <label className="form-label" htmlFor="webhook-uri">
-              WEBHOOK TARGET URI
+              TIKTOK GIFT WEBHOOK (event: "gift")
             </label>
             <input
               id="webhook-uri"
@@ -94,6 +102,40 @@ export const ConfigTab: React.FC<ConfigTabProps> = ({
             />
             <span className="form-helper">
               Endpoint that receives HTTP POST requests when gifts are sent.
+            </span>
+          </div>
+
+          <div className="form-group">
+            <label className="form-label" htmlFor="webhook-chat-uri">
+              TIKTOK CHAT / TTS WEBHOOK (event: "tts")
+            </label>
+            <input
+              id="webhook-chat-uri"
+              className="raw-input"
+              type="url"
+              placeholder="https://your-server.com/api/chat-webhook"
+              value={webhookUriChat}
+              onChange={(e) => setWebhookUriChat(e.target.value)}
+            />
+            <span className="form-helper">
+              Receives chat messages when TTS/chat webhook is enabled. Empty falls back to gift webhook.
+            </span>
+          </div>
+
+          <div className="form-group">
+            <label className="form-label" htmlFor="webhook-spotify-uri">
+              SPOTIFY WEBHOOK (event: "spotify")
+            </label>
+            <input
+              id="webhook-spotify-uri"
+              className="raw-input"
+              type="url"
+              placeholder="https://your-server.com/api/spotify-webhook"
+              value={webhookUriSpotify}
+              onChange={(e) => setWebhookUriSpotify(e.target.value)}
+            />
+            <span className="form-helper">
+              Receives song-change events. Empty falls back to gift webhook.
             </span>
           </div>
 

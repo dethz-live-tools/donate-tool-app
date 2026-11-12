@@ -17,7 +17,9 @@ export async function handleTiktokRoutes(
       const parsed = await parseJsonBody(req);
       const u = parsed.username !== undefined ? parsed.username : state.username;
       const w = parsed.webhookUri !== undefined ? parsed.webhookUri : state.webhookUri;
-      await connectLive(u, w);
+      const wc = parsed.webhookUriChat !== undefined ? parsed.webhookUriChat : state.webhookUriChat;
+      const ws = parsed.webhookUriSpotify !== undefined ? parsed.webhookUriSpotify : state.webhookUriSpotify;
+      await connectLive(u, w, wc, ws);
       sendJson(res, 200, { success: true, message: "Connection initiated" });
     } catch (err: any) {
       sendJson(res, 400, { success: false, error: err.message });

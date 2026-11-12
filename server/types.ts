@@ -4,6 +4,8 @@ export const ALL_ROLES: ChatRole[] = ["owner", "moderator", "subscriber", "follo
 export interface AppConfig {
   username: string;
   webhookUri: string;
+  webhookUriChat?: string;
+  webhookUriSpotify?: string;
   sendTtsWebhook?: boolean;
   spotifyClientId: string;
   spotifyClientSecret: string;
@@ -141,6 +143,8 @@ export interface SpotifyInfo {
 export interface ServerState {
   username: string;
   webhookUri: string;
+  webhookUriChat?: string;
+  webhookUriSpotify?: string;
   status: "disconnected" | "connecting" | "connected" | "error";
   roomId: string | null;
   error: string | null;

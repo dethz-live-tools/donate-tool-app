@@ -76,12 +76,19 @@ export function disconnectLive() {
   broadcastState();
 }
 
-export async function connectLive(username?: string, webhookUri?: string) {
+export async function connectLive(username?: string, webhookUri?: string, webhookUriChat?: string, webhookUriSpotify?: string) {
   disconnectLive();
 
   state.username = String(username !== undefined ? username : state.username || "").trim();
   state.webhookUri = String(webhookUri !== undefined ? webhookUri : state.webhookUri || "").trim();
-  saveConfig({ username: state.username, webhookUri: state.webhookUri });
+  state.webhookUriChat = String(webhookUriChat !== undefined ? webhookUriChat : state.webhookUriChat || "").trim();
+  state.webhookUriSpotify = String(webhookUriSpotify !== undefined ? webhookUriSpotify : state.webhookUriSpotify || "").trim();
+  saveConfig({
+    username: state.username,
+    webhookUri: state.webhookUri,
+    webhookUriChat: state.webhookUriChat,
+    webhookUriSpotify: state.webhookUriSpotify,
+  });
 
   if (!state.username) {
     state.status = "error";

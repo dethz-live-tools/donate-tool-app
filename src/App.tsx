@@ -54,6 +54,8 @@ export default function App() {
   // TikTok & Webhook state
   const [username, setUsername] = useState("");
   const [webhookUri, setWebhookUri] = useState("");
+  const [webhookUriChat, setWebhookUriChat] = useState("");
+  const [webhookUriSpotify, setWebhookUriSpotify] = useState("");
   const [status, setStatus] = useState<"disconnected" | "connecting" | "connected" | "error">("disconnected");
   const [roomId, setRoomId] = useState<string | null>(null);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
@@ -132,6 +134,8 @@ export default function App() {
           const data: ServerState = await res.json();
           if (data.username) setUsername(data.username);
           if (data.webhookUri) setWebhookUri(data.webhookUri);
+          if (data.webhookUriChat) setWebhookUriChat(data.webhookUriChat);
+          if (data.webhookUriSpotify) setWebhookUriSpotify(data.webhookUriSpotify);
           setStatus(data.status);
           setRoomId(data.roomId);
           if (data.error) setErrorMsg(data.error);
@@ -274,7 +278,12 @@ export default function App() {
       const res = await fetch(`${API_BASE}/api/connect`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ username: username.trim(), webhookUri: webhookUri.trim() }),
+        body: JSON.stringify({
+          username: username.trim(),
+          webhookUri: webhookUri.trim(),
+          webhookUriChat: webhookUriChat.trim(),
+          webhookUriSpotify: webhookUriSpotify.trim(),
+        }),
       });
       const data = await res.json();
       if (!data.success) {
@@ -311,6 +320,8 @@ export default function App() {
         body: JSON.stringify({
           username: username.trim(),
           webhookUri: webhookUri.trim(),
+          webhookUriChat: webhookUriChat.trim(),
+          webhookUriSpotify: webhookUriSpotify.trim(),
         }),
       });
       const data = await res.json();
@@ -827,6 +838,10 @@ export default function App() {
             setUsername={setUsername}
             webhookUri={webhookUri}
             setWebhookUri={setWebhookUri}
+            webhookUriChat={webhookUriChat}
+            setWebhookUriChat={setWebhookUriChat}
+            webhookUriSpotify={webhookUriSpotify}
+            setWebhookUriSpotify={setWebhookUriSpotify}
             status={status}
             loading={loading}
             testing={testing}

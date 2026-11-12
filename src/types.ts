@@ -151,6 +151,8 @@ export interface SpotifyInfo {
 export interface ServerState {
   username: string;
   webhookUri: string;
+  webhookUriChat?: string;
+  webhookUriSpotify?: string;
   status: "disconnected" | "connecting" | "connected" | "error";
   roomId: string | null;
   error: string | null;
