@@ -91,7 +91,8 @@ const STUDIO_OBS_HTML = `<!DOCTYPE html>
             const host = parsed.hostname.toLowerCase();
             if (host === "169.254.169.254" || host.startsWith("169.254.") || host === "metadata.google.internal" || host.startsWith("fe80:")) continue;
             const port = parsed.port ? Number(parsed.port) : (parsed.protocol === "https:" ? 443 : 80);
-            if ((host === "localhost" || host === "127.0.0.1" || host === "::1") && (port === 3001 || port === Number(window.location.port))) continue;
+            const isLoopback = host === "localhost" || host === "127.0.0.1" || host === "0.0.0.0" || host === "::1" || host === "[::1]" || host === "[::]" || host.startsWith("127.");
+            if (isLoopback && (port === 3001 || port === Number(window.location.port))) continue;
             targetSrc = parsed.href;
           } catch {
             continue;

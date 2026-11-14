@@ -417,7 +417,14 @@ export const StudioTab: React.FC<StudioTabProps> = ({
         throw new Error("Targeting cloud metadata services is forbidden.");
       }
       const port = url.port ? Number(url.port) : (url.protocol === "https:" ? 443 : 80);
-      const isLoopback = host === "localhost" || host === "127.0.0.1" || host === "::1";
+      const isLoopback =
+        host === "localhost" ||
+        host === "127.0.0.1" ||
+        host === "0.0.0.0" ||
+        host === "::1" ||
+        host === "[::1]" ||
+        host === "[::]" ||
+        host.startsWith("127.");
       if (isLoopback && (port === 3001 || port === Number(window.location.port))) {
         throw new Error("External layer cannot target the application's own API port.");
       }

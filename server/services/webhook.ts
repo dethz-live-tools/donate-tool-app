@@ -29,8 +29,15 @@ export function validateWebhookUrl(uri: string): void {
 
   // Block webhook targeting the internal application's own API port
   const port = parsed.port ? Number(parsed.port) : (parsed.protocol === "https:" ? 443 : 80);
-  const isLoopback = hostname === "localhost" || hostname === "127.0.0.1" || hostname === "::1" || hostname === "[::1]";
-  if (isLoopback && port === PORT) {
+  const isLoopback =
+    hostname === "localhost" ||
+    hostname === "127.0.0.1" ||
+    hostname === "0.0.0.0" ||
+    hostname === "::1" ||
+    hostname === "[::1]" ||
+    hostname === "[::]" ||
+    hostname.startsWith("127.");
+  if (isLoopback && (port === 3001 || port === PORT)) {
     throw new Error("Webhook cannot target the application's own API port");
   }
 }
