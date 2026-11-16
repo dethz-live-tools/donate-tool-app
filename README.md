@@ -167,6 +167,7 @@ Dispatched on song change, play/pause, or manual test:
 Detailed guides are located in the [`docs/`](file:///docs/) directory:
 
 - 🏛️ [**Architecture & System Design**](file:///docs/architecture.md): Overview of Tauri desktop runtime, Node/Bun server, SSE state synchronization, and services.
+- 🆕 [**Latest Features (v0.1.11+)**](file:///docs/latest-features.md): Update checker, role-based bot access, split webhooks, log filters, hidden backend terminal, portable builds.
 - 📺 [**Overlays & Marketplace Guide**](file:///docs/overlays.md): Browser Source configuration in OBS, built-in presets, and building custom widgets.
 - 📡 [**Webhook Specifications**](file:///docs/webhooks.md): Full schema definitions, dispatch behavior, edge cases, and logging details.
 - 🎵 [**Spotify Setup Guide**](file:///docs/spotify-setup.md): Step-by-step instructions for creating a Spotify Developer App, granting scopes, and linking your account.
