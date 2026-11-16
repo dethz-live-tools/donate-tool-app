@@ -8,6 +8,7 @@ interface SidebarProps {
   roomId: string | null;
   spotify: SpotifyInfo;
   track: SpotifyTrack | null;
+  backendOnline: boolean;
 }
 
 export const Sidebar: React.FC<SidebarProps> = ({
@@ -17,6 +18,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
   roomId,
   spotify,
   track,
+  backendOnline,
 }) => {
   const [collapsed, setCollapsed] = useState(false);
   return (
@@ -101,6 +103,15 @@ export const Sidebar: React.FC<SidebarProps> = ({
           }}
         >
           SYSTEM STATUS
+        </div>
+
+        {/* Backend Status Chip */}
+        <div
+          className={`status-chip ${backendOnline ? "connected" : "disconnected"}`}
+          style={{ width: "100%", justifyContent: "flex-start" }}
+        >
+          <span className="status-dot"></span>
+          <span>BRIDGE: {backendOnline ? "ONLINE" : "OFFLINE"}</span>
         </div>
 
         {/* TikTok Status Chip */}

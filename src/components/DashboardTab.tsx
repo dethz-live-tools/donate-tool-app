@@ -582,6 +582,15 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({
   };
 
   const [payloadSpecTab, setPayloadSpecTab] = React.useState<"tiktok" | "tts" | "spotify">("tiktok");
+  const [logFilter, setLogFilter] = React.useState<"all" | "gift" | "tts" | "spotify">("all");
+  const filteredLogs =
+    logFilter === "all"
+      ? logs
+      : logs.filter(
+          (l) =>
+            (logFilter === "gift" && (l.type === "gift" || l.type === "test")) ||
+            l.type === logFilter
+        );
   const track = spotify.currentTrack;
 
   return (
@@ -1752,7 +1761,20 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({
 
         {!minimized.logs && (
           <>
-            {logs.length === 0 ? (
+            <div className="log-filter-row">
+              {(["all", "gift", "tts", "spotify"] as const).map((f) => (
+                <button
+                  key={f}
+                  type="button"
+                  className={`btn ${logFilter === f ? "btn-primary" : "btn-secondary"}`}
+                  style={{ padding: "3px 10px", fontSize: "11px" }}
+                  onClick={() => setLogFilter(f)}
+                >
+                  {f === "all" ? "ALL" : f === "gift" ? "GIFT" : f.toUpperCase()}
+                </button>
+              ))}
+            </div>
+            {filteredLogs.length === 0 ? (
               <div className="empty-state">
                 [ NO DISPATCHES RECORDED YET ]
                 <br />
@@ -1760,7 +1782,7 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({
               </div>
             ) : (
               <div className="logs-list">
-                {logs.map((log) => (
+                {filteredLogs.map((log) => (
                   <div
                     key={log.id}
                     className={`log-item ${log.success ? "success" : "failed"}`}

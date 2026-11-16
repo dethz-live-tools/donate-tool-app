@@ -484,6 +484,13 @@ h3 {
 }
 
 /* Logs Table / List */
+.log-filter-row {
+  display: flex;
+  gap: 6px;
+  margin-bottom: 10px;
+  flex-wrap: wrap;
+}
+
 .logs-list {
   display: flex;
   flex-direction: column;

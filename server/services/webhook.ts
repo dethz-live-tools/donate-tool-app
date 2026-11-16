@@ -42,6 +42,17 @@ export function validateWebhookUrl(uri: string): void {
   }
 }
 
+function pushLog(entry: LogEntry) {
+  state.logs.unshift(entry);
+  // Keep up to 50 per type so gift volume never evicts tts/spotify logs
+  const sameType = state.logs.filter((l) => l.type === entry.type);
+  if (sameType.length > 50) {
+    const oldestSame = state.logs.indexOf(sameType[sameType.length - 1]);
+    state.logs.splice(oldestSame, 1);
+  }
+  if (state.logs.length > 250) state.logs.pop();
+}
+
 export async function sendWebhook(
   payload: WebhookPayload,
   type: "gift" | "test" | "system" | "spotify" | "tts" = "gift"
@@ -64,8 +75,7 @@ export async function sendWebhook(
       success: false,
       error: "Webhook URI is empty",
     };
-    state.logs.unshift(entry);
-    if (state.logs.length > 50) state.logs.pop();
+    pushLog(entry);
     broadcastState();
     return entry;
   }
@@ -83,8 +93,7 @@ export async function sendWebhook(
       success: false,
       error: `Invalid Webhook URL: ${urlErr.message}`,
     };
-    state.logs.unshift(entry);
-    if (state.logs.length > 50) state.logs.pop();
+    pushLog(entry);
     broadcastState();
     return entry;
   }
@@ -129,8 +138,7 @@ export async function sendWebhook(
     };
   }
 
-  state.logs.unshift(entry);
-  if (state.logs.length > 50) state.logs.pop();
+  pushLog(entry);
   broadcastState();
   return entry;
 }

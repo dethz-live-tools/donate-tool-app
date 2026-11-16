@@ -57,6 +57,7 @@ export default function App() {
   const [webhookUriChat, setWebhookUriChat] = useState("");
   const [webhookUriSpotify, setWebhookUriSpotify] = useState("");
   const [status, setStatus] = useState<"disconnected" | "connecting" | "connected" | "error">("disconnected");
+  const [backendOnline, setBackendOnline] = useState(false);
   const [roomId, setRoomId] = useState<string | null>(null);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [logs, setLogs] = useState<LogEntry[]>([]);
@@ -131,6 +132,7 @@ export default function App() {
       try {
         const res = await fetch(`${API_BASE}/api/status`);
         if (res.ok) {
+          setBackendOnline(true);
           const data: ServerState = await res.json();
           if (data.username) setUsername(data.username);
           if (data.webhookUri) setWebhookUri(data.webhookUri);
@@ -154,6 +156,7 @@ export default function App() {
         try {
           const res = await fetch("/api/status");
           if (res.ok) {
+            setBackendOnline(true);
             const data: ServerState = await res.json();
             if (data.username) setUsername(data.username);
             if (data.webhookUri) setWebhookUri(data.webhookUri);
@@ -173,6 +176,7 @@ export default function App() {
           }
         } catch {
           // Backend might still be starting
+          setBackendOnline(false);
         }
       }
     }
@@ -183,6 +187,7 @@ export default function App() {
       try {
         const es = new EventSource(`${API_BASE}/api/events`);
         eventSourceRef.current = es;
+        es.onopen = () => setBackendOnline(true);
 
         es.onmessage = (event) => {
           try {
@@ -734,6 +739,7 @@ export default function App() {
         roomId={roomId}
         spotify={spotify}
         track={spotify.currentTrack}
+        backendOnline={backendOnline}
       />
 
       {/* Main Page Content */}

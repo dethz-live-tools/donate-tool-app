@@ -1,18 +1,19 @@
 {
   "name": "donate-socket",
   "private": true,
-  "version": "0.1.14",
+  "version": "0.1.16",
   "type": "module",
   "scripts": {
     "dev": "bun dev.ts",
     "dev:client": "vite",
     "dev:server": "bun --watch server/index.ts",
+    "dev:ui": "tauri dev",
     "server": "bun server/index.ts",
     "build": "tsc && vite build",
     "build:backend": "bun scripts/build-backend.ts",
+    "build:full": "bun run build && bun run build:backend && bun run tauri build",
     "preview": "vite preview",
-    "tauri": "tauri",
-    "dev:ui": "tauri dev"
+    "tauri": "tauri"
   },
   "dependencies": {
     "@tauri-apps/api": "^2",
