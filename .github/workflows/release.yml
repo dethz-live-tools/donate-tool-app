@@ -79,12 +79,9 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - platform: 'macos-latest'
-            arch: 'Apple Silicon (aarch64)'
+          - platform: 'macos-15'
+            arch: 'macOS (aarch64 + x86_64)'
             args: '--target aarch64-apple-darwin'
-          - platform: 'macos-latest'
-            arch: 'Intel (x86_64)'
-            args: '--target x86_64-apple-darwin'
           - platform: 'ubuntu-22.04'
             arch: 'Linux (x86_64)'
             args: ''
@@ -110,7 +107,7 @@ jobs:
       - name: Install Rust stable
         uses: dtolnay/rust-toolchain@stable
         with:
-          targets: ${{ matrix.platform == 'macos-latest' && 'aarch64-apple-darwin,x86_64-apple-darwin' || '' }}
+          targets: ${{ startsWith(matrix.platform, 'macos') && 'aarch64-apple-darwin,x86_64-apple-darwin' || '' }}
 
       - name: Rust cache
         uses: swatinem/rust-cache@v2
@@ -167,3 +164,37 @@ jobs:
           releaseDraft: false
           prerelease: false
           args: ${{ matrix.args }}
+
+      - name: Build Tauri (macOS Intel) and Publish GitHub Release
+        if: startsWith(matrix.platform, 'macos')
+        uses: tauri-apps/tauri-action@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+        with:
+          tagName: v__VERSION__
+          releaseName: 'v__VERSION__'
+          releaseBody: ${{ steps.release_notes.outputs.BODY }}
+          releaseDraft: false
+          prerelease: false
+          args: '--target x86_64-apple-darwin'
+
+      - name: Package & Upload Windows Portable ZIP
+        if: matrix.platform == 'windows-latest'
+        shell: pwsh
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $version = "${{ needs.check-version.outputs.version }}"
+          $stage = "portable-staging"
+          $zip = "donate-socket_${version}_x64-portable.zip"
+          New-Item -ItemType Directory -Force -Path "$stage/backend" | Out-Null
+          Copy-Item "src-tauri/target/release/donate-socket.exe" "$stage/"
+          Copy-Item "src-tauri/backend/donate-server.exe" "$stage/backend/"
+          Copy-Item "config.example.yaml" "$stage/"
+          Copy-Item "overlays" "$stage/overlays" -Recurse
+          Compress-Archive -Path "$stage/*" -DestinationPath $zip -Force
+          gh release upload "v$version" $zip --clobber
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }

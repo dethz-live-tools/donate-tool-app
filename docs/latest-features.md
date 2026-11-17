@@ -72,9 +72,9 @@ type (250 total), so high gift volume never evicts TTS/Spotify history.
 
 - `bun run build:full` — frontend (`tsc && vite build`) → backend binary
   (`scripts/build-backend.ts`) → Tauri release bundle in one command.
-- GitHub release workflow (`release.yml`) builds Windows
-  `nsis,msi,portable` — a portable `.exe` (no installer) is attached alongside
-  the setup and MSI artifacts.
+- GitHub release workflow (`release.yml`) builds Windows NSIS (`-setup.exe`),
+  MSI (`.msi`), and a portable ZIP (`donate-socket_<version>_x64-portable.zip`
+  with `donate-socket.exe` + bundled resources, no installer).
 
 ## Related
 

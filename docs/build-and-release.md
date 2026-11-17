@@ -84,11 +84,10 @@ Development and standalone server commands continue using the working directory'
 The repository includes an automated GitHub Actions workflow at [`.github/workflows/release.yml`](file:///.github/workflows/release.yml).
 
 ### Build Matrix
-The workflow builds simultaneously on clean virtual environments for:
-1. **macOS Apple Silicon**: `macos-latest` targeting `aarch64-apple-darwin`
-2. **macOS Intel**: `macos-latest` targeting `x86_64-apple-darwin`
-3. **Linux**: `ubuntu-22.04` (x86_64) generating `.deb` and `.AppImage`
-4. **Windows**: `windows-latest` (x86_64) generating `.msi` and `.exe` installers
+The workflow builds across clean virtual environments for:
+1. **macOS (`macos-15`)**: builds both `aarch64-apple-darwin` (Apple Silicon) and `x86_64-apple-darwin` (Intel)
+2. **Linux (`ubuntu-22.04`)**: x86_64 `.deb`, `.rpm`, and `.AppImage`
+3. **Windows (`windows-latest`)**: x86_64 `.msi`, `-setup.exe`, and `_x64-portable.zip`
 
 ### Trigger Conditions
 - **Git Tags**: Any tag pushed matching `v*` (e.g. `git tag v1.0.0 && git push origin v1.0.0`).
