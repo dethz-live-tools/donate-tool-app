@@ -13,6 +13,7 @@ import {
   StudioScene,
   TikTokChatMessage,
 } from "./types";
+import { LangProvider } from "./i18n.tsx";
 import { Sidebar } from "./components/Sidebar";
 import { DashboardTab } from "./components/DashboardTab";
 import { ConfigTab } from "./components/ConfigTab";
@@ -730,9 +731,10 @@ export default function App() {
   }
 
   return (
-    <div className="app-layout">
-      {/* Sidebar Navigation */}
-      <Sidebar
+    <LangProvider>
+      <div className="app-layout">
+        {/* Sidebar Navigation */}
+        <Sidebar
         currentPage={currentPage}
         onSelectPage={setCurrentPage}
         status={status}
@@ -889,6 +891,7 @@ export default function App() {
           />
         )}
       </main>
-    </div>
+      </div>
+    </LangProvider>
   );
 }

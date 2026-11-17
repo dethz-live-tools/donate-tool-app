@@ -1,4 +1,6 @@
 use std::process::Command;
+#[cfg(windows)]
+use std::os::windows::process::CommandExt;
 use tauri::Manager;
 
 #[cfg(windows)]

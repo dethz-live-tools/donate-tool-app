@@ -100,6 +100,8 @@ function formatMs(ms: number): string {
   return `${minutes}:${seconds.toString().padStart(2, "0")}`;
 }
 
+import { useLang } from "../i18n.tsx";
+
 export const DashboardTab: React.FC<DashboardTabProps> = ({
   username,
   webhookUri,
@@ -583,6 +585,7 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({
 
   const [payloadSpecTab, setPayloadSpecTab] = React.useState<"tiktok" | "tts" | "spotify">("tiktok");
   const [logFilter, setLogFilter] = React.useState<"all" | "gift" | "tts" | "spotify">("all");
+  const { t } = useLang();
   const filteredLogs =
     logFilter === "all"
       ? logs
@@ -1729,7 +1732,7 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({
       <section className="raw-card">
         <div className="card-title">
           <div className="card-title-left">
-            <h3>WEBHOOK DISPATCH LOGS ({logs.length})</h3>
+            <h3>{t("WEBHOOK DISPATCH LOGS")} ({logs.length})</h3>
             {minimized.logs ? (
               <span className="minimized-summary">
                 {logs.length} LOGS • {logs.filter((l) => l.success).length} OK
@@ -1744,7 +1747,7 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({
                 style={{ padding: "4px 10px", fontSize: "11px" }}
                 onClick={onClearLogs}
               >
-                CLEAR LOGS
+                {t("CLEAR LOGS")}
               </button>
             )}
             <button
@@ -1770,13 +1773,13 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({
                   style={{ padding: "3px 10px", fontSize: "11px" }}
                   onClick={() => setLogFilter(f)}
                 >
-                  {f === "all" ? "ALL" : f === "gift" ? "GIFT" : f.toUpperCase()}
+                  {f === "all" ? t("ALL") : f === "gift" ? t("GIFT") : f === "tts" ? t("TTS") : t("SPOTIFY")}
                 </button>
               ))}
             </div>
             {filteredLogs.length === 0 ? (
               <div className="empty-state">
-                [ NO DISPATCHES RECORDED YET ]
+                [ {t("NO DISPATCHES RECORDED YET")} ]
                 <br />
                 Connect to a stream, play Spotify songs, or click &quot;TEST WEBHOOK&quot; to test.
               </div>

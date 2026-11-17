@@ -1,5 +1,6 @@
 import React from "react";
 import { SpotifyInfo } from "../types";
+import { useLang } from "../i18n.tsx";
 
 interface ConfigTabProps {
   username: string;
@@ -58,21 +59,22 @@ export const ConfigTab: React.FC<ConfigTabProps> = ({
   onRefreshSpotify,
   onDisconnectSpotify,
 }) => {
+  const { t } = useLang();
   return (
     <>
       {/* TikTok & Webhook Configuration */}
       <section className="raw-card elevated">
         <div className="card-title">
-          <h2>TIKTOK LIVE CONFIGURATION</h2>
+          <h2>{t("TIKTOK LIVE CONFIGURATION")}</h2>
           <span className="mono-font" style={{ fontSize: "12px", color: "var(--ctp-subtext0)" }}>
-            ENDPOINT SETTINGS
+            {t("ENDPOINT SETTINGS")}
           </span>
         </div>
 
         <form onSubmit={onConnect} style={{ display: "flex", flexDirection: "column", gap: "16px" }}>
           <div className="form-group">
             <label className="form-label" htmlFor="tiktok-username">
-              TIKTOK USERNAME
+              {t("TIKTOK USERNAME")}
             </label>
             <input
               id="tiktok-username"
@@ -84,13 +86,13 @@ export const ConfigTab: React.FC<ConfigTabProps> = ({
               disabled={status === "connected" || status === "connecting"}
             />
             <span className="form-helper">
-              Username of the TikTok account currently broadcasting live.
+              {t("Username of the TikTok account currently broadcasting live.")}
             </span>
           </div>
 
           <div className="form-group">
             <label className="form-label" htmlFor="webhook-uri">
-              TIKTOK GIFT WEBHOOK (event: "gift")
+              {t('TIKTOK GIFT WEBHOOK (event: "gift")')}
             </label>
             <input
               id="webhook-uri"
@@ -101,13 +103,13 @@ export const ConfigTab: React.FC<ConfigTabProps> = ({
               onChange={(e) => setWebhookUri(e.target.value)}
             />
             <span className="form-helper">
-              Endpoint that receives HTTP POST requests when gifts are sent.
+              {t("Endpoint that receives HTTP POST requests when gifts are sent.")}
             </span>
           </div>
 
           <div className="form-group">
             <label className="form-label" htmlFor="webhook-chat-uri">
-              TIKTOK CHAT / TTS WEBHOOK (event: "tts")
+              {t('TIKTOK CHAT / TTS WEBHOOK (event: "tts")')}
             </label>
             <input
               id="webhook-chat-uri"
@@ -118,13 +120,13 @@ export const ConfigTab: React.FC<ConfigTabProps> = ({
               onChange={(e) => setWebhookUriChat(e.target.value)}
             />
             <span className="form-helper">
-              Receives chat messages when TTS/chat webhook is enabled. Empty falls back to gift webhook.
+              {t("Receives chat messages when TTS/chat webhook is enabled. Empty falls back to gift webhook.")}
             </span>
           </div>
 
           <div className="form-group">
             <label className="form-label" htmlFor="webhook-spotify-uri">
-              SPOTIFY WEBHOOK (event: "spotify")
+              {t('SPOTIFY WEBHOOK (event: "spotify")')}
             </label>
             <input
               id="webhook-spotify-uri"
@@ -135,7 +137,7 @@ export const ConfigTab: React.FC<ConfigTabProps> = ({
               onChange={(e) => setWebhookUriSpotify(e.target.value)}
             />
             <span className="form-helper">
-              Receives song-change events. Empty falls back to gift webhook.
+              {t("Receives song-change events. Empty falls back to gift webhook.")}
             </span>
           </div>
 
@@ -146,7 +148,7 @@ export const ConfigTab: React.FC<ConfigTabProps> = ({
               onClick={onSaveConfig}
               disabled={loading}
             >
-              SAVE CONFIG
+              {t("SAVE CONFIG")}
             </button>
 
             {status === "connected" || status === "connecting" ? (
@@ -156,7 +158,7 @@ export const ConfigTab: React.FC<ConfigTabProps> = ({
                 onClick={onDisconnect}
                 disabled={loading}
               >
-                DISCONNECT STREAM
+                {t("DISCONNECT STREAM")}
               </button>
             ) : (
               <button
@@ -164,7 +166,7 @@ export const ConfigTab: React.FC<ConfigTabProps> = ({
                 className="btn btn-primary"
                 disabled={loading}
               >
-                {loading ? "CONNECTING..." : "SAVE & CONNECT"}
+                {loading ? t("CONNECTING...") : t("SAVE & CONNECT")}
               </button>
             )}
 
@@ -174,7 +176,7 @@ export const ConfigTab: React.FC<ConfigTabProps> = ({
               onClick={onTestWebhook}
               disabled={testing || !webhookUri.trim()}
             >
-              {testing ? "SENDING..." : "SEND TEST WEBHOOK"}
+              {testing ? t("SENDING...") : t("SEND TEST WEBHOOK")}
             </button>
           </div>
         </form>

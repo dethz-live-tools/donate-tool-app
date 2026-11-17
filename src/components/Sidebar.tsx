@@ -1,5 +1,6 @@
 import React, { useState } from "react";
 import { SpotifyInfo, SpotifyTrack } from "../types";
+import { useLang, type Lang } from "../i18n.tsx";
 
 interface SidebarProps {
   currentPage: "dashboard" | "config" | "overlays" | "studio" | "about";
@@ -21,6 +22,8 @@ export const Sidebar: React.FC<SidebarProps> = ({
   backendOnline,
 }) => {
   const [collapsed, setCollapsed] = useState(false);
+  const { lang, setLang, t } = useLang();
+  const langOptions: Lang[] = ["en", "th"];
   return (
     <aside className={`app-sidebar ${collapsed ? "sidebar-collapsed" : ""}`}>
       <button
@@ -47,7 +50,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
           aria-label="Dashboard"
           title="Dashboard"
         >
-          <span>[ DASHBOARD ]</span>
+          <span>[ {t("DASHBOARD")} ]</span>
           <span aria-hidden="true">D</span>
         </button>
         <button
@@ -57,7 +60,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
           aria-label="Configuration"
           title="Configuration"
         >
-          <span>[ CONFIGURATION ]</span>
+          <span>[ {t("CONFIGURATION")} ]</span>
           <span aria-hidden="true">C</span>
         </button>
         <button
@@ -67,7 +70,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
           aria-label="Overlays Market"
           title="Overlays Market"
         >
-          <span>[ OVERLAYS MARKET ]</span>
+          <span>[ {t("OVERLAYS")} ]</span>
           <span aria-hidden="true">O</span>
         </button>
         <button
@@ -77,7 +80,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
           aria-label="Overlay Studio"
           title="Overlay Studio"
         >
-          <span>[ OVERLAY STUDIO ]</span>
+          <span>[ {t("OVERLAY STUDIO")} ]</span>
           <span aria-hidden="true">S</span>
         </button>
         <button
@@ -87,7 +90,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
           aria-label="About"
           title="About"
         >
-          <span>[ ABOUT ]</span>
+          <span>[ {t("ABOUT")} ]</span>
           <span aria-hidden="true">A</span>
         </button>
       </nav>
@@ -102,7 +105,21 @@ export const Sidebar: React.FC<SidebarProps> = ({
             letterSpacing: "1px",
           }}
         >
-          SYSTEM STATUS
+          <select
+          className="song-request-input"
+          style={{ width: "100%", padding: "6px", fontSize: "12px" }}
+          value={lang}
+          onChange={(e) => setLang(e.target.value as Lang)}
+          aria-label="Language / ภาษา"
+        >
+          {langOptions.map((l) => (
+            <option key={l} value={l}>
+              {l === "en" ? "ENGLISH" : "ไทย"}
+            </option>
+          ))}
+        </select>
+
+        {t("SYSTEM STATUS")}
         </div>
 
         {/* Backend Status Chip */}
@@ -111,14 +128,14 @@ export const Sidebar: React.FC<SidebarProps> = ({
           style={{ width: "100%", justifyContent: "flex-start" }}
         >
           <span className="status-dot"></span>
-          <span>BRIDGE: {backendOnline ? "ONLINE" : "OFFLINE"}</span>
+          <span>{t(backendOnline ? "BRIDGE: ONLINE" : "BRIDGE: OFFLINE")}</span>
         </div>
 
         {/* TikTok Status Chip */}
         <div className={`status-chip ${status}`} style={{ width: "100%", justifyContent: "flex-start" }}>
           <span className="status-dot"></span>
           <span>
-            {status === "connected" && roomId ? `LIVE: ${roomId}` : `TIKTOK: ${status.toUpperCase()}`}
+            {status === "connected" && roomId ? t("LIVE: {room}").replace("{room}", roomId) : t(`TIKTOK: ${status.toUpperCase()}`)}
           </span>
         </div>
 
@@ -138,12 +155,12 @@ export const Sidebar: React.FC<SidebarProps> = ({
           <span className="status-dot"></span>
           <span>
             {spotify.error
-              ? "SPOTIFY: ERROR"
+              ? t("SPOTIFY: ERROR")
               : spotify.connected
               ? track?.isPlaying
-                ? "SPOTIFY: PLAYING"
-                : "SPOTIFY: IDLE"
-              : "SPOTIFY: OFF"}
+                ? t("SPOTIFY: PLAYING")
+                : t("SPOTIFY: IDLE")
+              : t("SPOTIFY: OFF")}
           </span>
         </div>
       </div>

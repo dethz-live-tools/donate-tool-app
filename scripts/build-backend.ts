@@ -13,5 +13,14 @@ if (triple && !targets[triple]) throw new Error(`Unsupported backend target: ${t
 const windows = triple ? triple.includes("windows") : process.platform === "win32";
 const output = resolve("src-tauri/backend", windows ? "donate-server.exe" : "donate-server");
 mkdirSync(resolve("src-tauri/backend"), { recursive: true });
-const child = Bun.spawn([process.execPath, "build", "--compile", ...(triple ? [`--target=${targets[triple]}`] : []), "server/index.ts", "--outfile", output], { stdout: "inherit", stderr: "inherit" });
+const child = Bun.spawn([
+  process.execPath,
+  "build",
+  "--compile",
+  ...(windows ? ["--windows-hide-console"] : []),
+  ...(triple ? [`--target=${targets[triple]}`] : []),
+  "server/index.ts",
+  "--outfile",
+  output
+], { stdout: "inherit", stderr: "inherit" });
 if (await child.exited !== 0) throw new Error("Backend compilation failed");
