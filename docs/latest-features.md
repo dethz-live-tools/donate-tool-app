@@ -1,4 +1,4 @@
-# Latest Features (v0.1.11 — v0.1.17 & Unreleased)
+# Latest Features (v0.1.11 — v0.1.18)
 
 Guide to features added after the original documentation set. Covers update checking, bilingual UI, role-based access, split webhooks, live polling, log filtering, packaged config paths, security hardening, and build changes.
 
