@@ -28,14 +28,41 @@ A comprehensive source-code security audit was conducted on `donate-tools-pc`. T
 - **Vulnerability**: `server/routes/spotify.ts` initiated Spotify authorization without an anti-CSRF `state` parameter.
 - **Remediation**: Implemented cryptographically generated one-time `state` parameter generated on `/api/spotify/login` and strictly validated on `/api/spotify/callback`.
 
+### 1.7 Expanded Loopback, IPv6, Link-Local & Metadata SSRF Protection
+- **Vulnerability**: Initial URL checks did not cover all loopback ranges (`127.0.0.0/8`), unspecified hosts (`0.0.0.0`, `[::]`), bracketed IPv6 / IPv4-mapped IPv6 addresses (`[::ffff:127.0.0.1]`, `[fe80::1]`, `[fd00:ec2::254]`, `[::ffff:169.254.169.254]`), embedded URL credentials, or HTTP redirect chains.
+- **Remediation**: Extracted shared `classifyBlockedHost()` in `server/utils.ts` (stripping IPv6 brackets and classifying metadata/link-local vs loopback hosts) and enforced it in `validateWebhookUrl()` (`server/services/webhook.ts`, alongside `redirect: "error"` on `fetch()`), `isValidExternalLayerUrl()` (`server/config.ts`), `STUDIO_OBS_HTML` (`server/routes/overlays.ts`), and `handleAddExternalLayer()` (`src/components/StudioTab.tsx`), covered by `tests/security.test.ts` and `server/studio.test.ts`.
+
+### 1.8 CORS Origin Allowlist
+- **Vulnerability / Exposure**: External web pages visited in the same browser should not be able to query or mutate `http://127.0.0.1:3001/api/*`.
+- **Remediation**: `isAllowedOrigin()` in `server/index.ts` restricts browser `Origin` headers to `tauri:` / `tauri.localhost` and loopback hosts (`localhost`, `127.0.0.1`, `::1`, `[::1]`), returning HTTP `403` for untrusted cross-origin `/api/*` requests and preflights.
+
+### 1.9 Single-Pass TTS Template Substitution
+- **Vulnerability**: Sequential string replacements in TTS templates could re-substitute placeholders injected inside `{nickname}` or `{username}` with the viewer's `{comment}`.
+- **Remediation**: `server/services/tiktok.ts` performs single-pass substitution using `.replace(/\{(nickname|username|comment)\}/g, ...)`.
+
+### 1.10 Prototype-Safe i18n Dictionary Lookup
+- **Vulnerability**: Direct property indexing on `dictionaries[lang]` returned `Object.prototype` functions for keys such as `toString` or `constructor`.
+- **Remediation**: `tFor()` in `src/i18n.tsx` checks `Object.prototype.hasOwnProperty.call(dict, key)` before resolving localized strings (`tests/i18n.test.ts`).
+
+### 1.11 CI Audit Enforcement & Workflow Expression Context Hardening
+- **Vulnerability**: `.github/workflows/security.yml` masked dependency audit failures (`bun pm audit || echo ...`), and `.github/workflows/release.yml` interpolated `${{ needs.check-version.outputs.version }}` directly inside an inline PowerShell script.
+- **Remediation**: Switched dependency scanning to failing `bun audit` on Node 24/Bun workflow actions, and moved `VERSION: ${{ needs.check-version.outputs.version }}` into step `env:` (`$env:VERSION`).
+
 ---
 
-## 2. CI/CD Automated Security Scanning
+## 2. CI/CD Automated Security Scanning & Verification
 
 Automated security checks are configured in [`.github/workflows/security.yml`](../.github/workflows/security.yml):
-- **CodeQL Static Analysis**: Scans TypeScript/JavaScript for injection, insecure deserialization, and data-flow flaws.
-- **Dependency Audit**: Audits npm/bun dependencies for known CVEs.
-- **Shannon AI Autonomous Scanner**: Runs on `push` to `main` with SARIF upload to GitHub Security tab when `SHANNON_AI_API_KEY` secret is configured.
+- **CodeQL Static Analysis**: Scans TypeScript/JavaScript (`actions/checkout@v7`, `github/codeql-action/*@v4`).
+- **Dependency Audit**: Runs `bun install --frozen-lockfile` followed by `bun audit` (`oven-sh/setup-bun@v2`).
+- **Shannon AI Autonomous Scanner**: Runs on push to `main` or weekly schedule when `SHANNON_AI_API_KEY` secret is configured.
+
+Local verification commands:
+```bash
+bun audit
+bun test
+cd src-tauri && cargo test
+```
 
 ---
 
