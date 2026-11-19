@@ -46,7 +46,7 @@ jobs:
         run: bun install --frozen-lockfile
 
       - name: Audit Node/Bun dependencies
-        run: bun pm audit || echo "Review flagged advisory items"
+        run: bun audit
 
   shannon-audit:
     name: Shannon AI Autonomous Security Scan

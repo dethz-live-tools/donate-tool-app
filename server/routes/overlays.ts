@@ -88,10 +88,10 @@ const STUDIO_OBS_HTML = `<!DOCTYPE html>
           try {
             const parsed = new URL(layer.url);
             if (!["http:", "https:"].includes(parsed.protocol) || parsed.username || parsed.password) continue;
-            const host = parsed.hostname.toLowerCase();
-            if (host === "169.254.169.254" || host.startsWith("169.254.") || host === "metadata.google.internal" || host.startsWith("fe80:")) continue;
+            const host = parsed.hostname.toLowerCase().replace(/^\[|\]$/g, "");
+            if (host === "169.254.169.254" || host === "169.254.169.253" || host.startsWith("169.254.") || host === "metadata.google.internal" || host === "fd00:ec2::254" || host.startsWith("fe80:") || host.startsWith("::ffff:a9fe:") || host.startsWith("::ffff:169.254.")) continue;
             const port = parsed.port ? Number(parsed.port) : (parsed.protocol === "https:" ? 443 : 80);
-            const isLoopback = host === "localhost" || host === "127.0.0.1" || host === "0.0.0.0" || host === "::1" || host === "[::1]" || host === "[::]" || host.startsWith("127.");
+            const isLoopback = host === "localhost" || host === "127.0.0.1" || host === "0.0.0.0" || host === "::1" || host === "::" || host.startsWith("127.") || host.startsWith("::ffff:7f") || host.startsWith("::ffff:127.") || host === "::ffff:0:0" || host === "::ffff:0.0.0.0";
             if (isLoopback && (port === 3001 || port === Number(window.location.port))) continue;
             targetSrc = parsed.href;
           } catch {

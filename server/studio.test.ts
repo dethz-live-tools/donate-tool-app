@@ -114,6 +114,8 @@ describe("Overlay Studio normalization & safety", () => {
       "http://127.0.0.1:3001/api/config", "http://localhost:3001/api/status",
       "http://127.0.0.2:3001/api/status", "http://0.0.0.0:3001/api/status",
       "http://[::1]:3001/api/status", "http://[::]:3001/api/status",
+      "http://[fe80::1]/", "http://[fd00:ec2::254]/",
+      "http://[::ffff:127.0.0.1]:3001/api/status", "http://[::ffff:169.254.169.254]/",
     ];
     const result = normalizeStudioScene({ layers: [
       { id: "secure", overlayId: "", url: "https://example.test/widget?token=a%2Fb&mode=live#overlay", x: 12.7, width: 10 },

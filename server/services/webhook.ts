@@ -1,6 +1,6 @@
 import { broadcastState, state } from "../state.ts";
 import type { LogEntry, WebhookPayload } from "../types.ts";
-import { PORT } from "../utils.ts";
+import { classifyBlockedHost, PORT } from "../utils.ts";
 
 export function validateWebhookUrl(uri: string): void {
   const parsed = new URL(uri);
@@ -13,31 +13,12 @@ export function validateWebhookUrl(uri: string): void {
     throw new Error("Credentials in webhook URL are forbidden");
   }
 
-  const hostname = parsed.hostname.toLowerCase();
-
-  // Block cloud metadata services and link-local addresses
-  if (
-    hostname === "169.254.169.254" ||
-    hostname === "169.254.169.253" ||
-    hostname === "metadata.google.internal" ||
-    hostname.startsWith("169.254.") ||
-    hostname === "[fd00:ec2::254]" ||
-    hostname.startsWith("fe80:")
-  ) {
+  const blocked = classifyBlockedHost(parsed.hostname);
+  if (blocked === "metadata") {
     throw new Error("Targeting cloud metadata services or link-local addresses is forbidden");
   }
-
-  // Block webhook targeting the internal application's own API port
   const port = parsed.port ? Number(parsed.port) : (parsed.protocol === "https:" ? 443 : 80);
-  const isLoopback =
-    hostname === "localhost" ||
-    hostname === "127.0.0.1" ||
-    hostname === "0.0.0.0" ||
-    hostname === "::1" ||
-    hostname === "[::1]" ||
-    hostname === "[::]" ||
-    hostname.startsWith("127.");
-  if (isLoopback && (port === 3001 || port === PORT)) {
+  if (blocked === "loopback" && (port === 3001 || port === PORT)) {
     throw new Error("Webhook cannot target the application's own API port");
   }
 }
@@ -109,6 +90,7 @@ export async function sendWebhook(
         "Content-Type": "application/json",
       },
       body: JSON.stringify(payload),
+      redirect: "error",
       signal: controller.signal,
     });
     clearTimeout(timer);

@@ -185,9 +185,10 @@ jobs:
         shell: pwsh
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          VERSION: ${{ needs.check-version.outputs.version }}
         run: |
           $ErrorActionPreference = 'Stop'
-          $version = "${{ needs.check-version.outputs.version }}"
+          $version = $env:VERSION
           $stage = "portable-staging"
           $zip = "donate-socket_${version}_x64-portable.zip"
           New-Item -ItemType Directory -Force -Path "$stage/backend" | Out-Null
