@@ -61,6 +61,7 @@ interface DashboardTabProps {
   username: string;
   webhookUri: string;
   status: "disconnected" | "connecting" | "connected" | "error";
+  tiktokError?: string | null;
   loading: boolean;
   testing: boolean;
   spotify: SpotifyInfo;
@@ -106,6 +107,7 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({
   username,
   webhookUri,
   status,
+  tiktokError = null,
   loading,
   testing,
   spotify,
@@ -601,7 +603,7 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({
       {/* Dashboard Panels Toolbar */}
       <div className="dashboard-toolbar">
         <span className="dashboard-toolbar-title">
-          DASHBOARD PANELS // 6 TOTAL {minimizedCount > 0 ? `(${minimizedCount} MINIMIZED)` : "(ALL EXPANDED)"}
+          {t("DASHBOARD PANELS // 6 TOTAL")} {minimizedCount > 0 ? t("({n} MINIMIZED)", { n: minimizedCount }) : t("(ALL EXPANDED)")}
         </span>
         <div style={{ display: "flex", gap: "8px" }}>
           <button
@@ -611,7 +613,7 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({
             onClick={expandAll}
             disabled={minimizedCount === 0}
           >
-            [+] EXPAND ALL
+            {t("[+] EXPAND ALL")}
           </button>
           <button
             type="button"
@@ -620,7 +622,7 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({
             onClick={minimizeAll}
             disabled={minimizedCount === 6}
           >
-            [_] MINIMIZE ALL
+            {t("[_] MINIMIZE ALL")}
           </button>
         </div>
       </div>
@@ -629,14 +631,14 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({
       <section className="raw-card">
         <div className="card-title">
           <div className="card-title-left">
-            <h2>STREAM CONTROLS</h2>
+            <h2>{t("STREAM CONTROLS")}</h2>
             {minimized.stream ? (
               <span className="minimized-summary">
-                @{username || "NONE"} • {status.toUpperCase()}
+                @{username || t("NONE")} • {status.toUpperCase()}
               </span>
             ) : (
               <span className="mono-font" style={{ fontSize: "12px", color: "var(--ctp-subtext0)" }}>
-                TARGET: {username ? `@${username}` : "(NOT CONFIGURED)"}
+                {t("TARGET:")} {username ? `@${username}` : t("(NOT CONFIGURED)")}
               </span>
             )}
           </div>
@@ -646,9 +648,9 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({
               className="btn btn-secondary"
               style={{ padding: "2px 8px", fontSize: "11px" }}
               onClick={() => toggleBox("stream")}
-              title={minimized.stream ? "Expand stream controls" : "Minimize box"}
+              title={minimized.stream ? t("Expand stream controls") : t("Minimize box")}
             >
-              {minimized.stream ? "[ + ] EXPAND" : "[ _ ] MINIMIZE"}
+              {minimized.stream ? t("[ + ] EXPAND") : t("[ _ ] MINIMIZE")}
             </button>
           </div>
         </div>
@@ -658,16 +660,28 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({
             <div>
               <p style={{ fontSize: "14px", color: "var(--text-primary)" }}>
                 {status === "connected"
-                  ? `Connected to stream @${username}`
+                  ? t("Connected to stream @{username}", { username })
                   : status === "connecting"
-                  ? `Connecting to @${username}...`
+                  ? t("Connecting to @{username}...", { username })
                   : username
-                  ? `Ready to connect to @${username}`
-                  : "No streamer configured. Go to Configuration page to set username."}
+                  ? t("Ready to connect to @{username}", { username })
+                  : t("No streamer configured. Go to Configuration page to set username.")}
               </p>
+              {tiktokError && (
+                <p
+                  className="mono-font"
+                  style={{
+                    fontSize: "12px",
+                    color: status === "error" ? "var(--status-error)" : "var(--status-warning)",
+                    marginTop: "4px",
+                  }}
+                >
+                  {tiktokError}
+                </p>
+              )}
               {webhookUri && (
                 <p className="mono-font" style={{ fontSize: "12px", color: "var(--ctp-subtext0)", marginTop: "4px" }}>
-                  Webhook: {webhookUri}
+                  {t("Webhook:")} {webhookUri}
                 </p>
               )}
             </div>
@@ -680,7 +694,7 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({
                   onClick={onDisconnect}
                   disabled={loading}
                 >
-                  DISCONNECT
+                  {t("DISCONNECT")}
                 </button>
               ) : (
                 <button
@@ -689,7 +703,7 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({
                   onClick={onConnect}
                   disabled={loading}
                 >
-                  {loading ? "CONNECTING..." : "CONNECT LIVE"}
+                  {loading ? t("CONNECTING...") : t("CONNECT LIVE")}
                 </button>
               )}
 
@@ -699,7 +713,7 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({
                 onClick={onTestWebhook}
                 disabled={testing || !webhookUri.trim()}
               >
-                {testing ? "SENDING..." : "TEST WEBHOOK"}
+                {testing ? t("SENDING...") : t("TEST WEBHOOK")}
               </button>
             </div>
           </div>
@@ -710,12 +724,12 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({
       <section className="raw-card elevated">
         <div className="card-title">
           <div className="card-title-left">
-            <h2>NOW PLAYING // SPOTIFY</h2>
+            <h2>{t("NOW PLAYING // SPOTIFY")}</h2>
             {minimized.spotify ? (
               <span className="minimized-summary">
                 {track
-                  ? `▶ ${track.name} - ${track.artist} [${track.isPlaying ? "PLAYING" : "PAUSED"}]`
-                  : `SPOTIFY: ${spotify.connected ? "CONNECTED (NO PLAYBACK)" : "OFFLINE"}`}
+                  ? `▶ ${track.name} - ${track.artist} [${track.isPlaying ? t("PLAYING") : t("PAUSED")}]`
+                  : `SPOTIFY: ${spotify.connected ? t("CONNECTED (NO PLAYBACK)") : t("OFFLINE")}`}
               </span>
             ) : null}
           </div>
@@ -728,26 +742,26 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({
                 onClick={onRefreshSpotify}
                 disabled={loading}
               >
-                REFRESH
+                {t("REFRESH")}
               </button>
             )}
             <span className="mono-font" style={{ fontSize: "12px", color: "var(--ctp-lavender)" }}>
               {spotify.error
-                ? "ERROR"
+                ? t("ERROR")
                 : spotify.connected
                 ? track?.isPlaying
-                  ? "ACTIVE"
-                  : "PAUSED"
-                : "DISCONNECTED"}
+                  ? t("ACTIVE")
+                  : t("PAUSED")
+                : t("DISCONNECTED")}
             </span>
             <button
               type="button"
               className="btn btn-secondary"
               style={{ padding: "2px 8px", fontSize: "11px" }}
               onClick={() => toggleBox("spotify")}
-              title={minimized.spotify ? "Expand Spotify player" : "Minimize box"}
+              title={minimized.spotify ? t("Expand Spotify player") : t("Minimize box")}
             >
-              {minimized.spotify ? "[ + ] EXPAND" : "[ _ ] MINIMIZE"}
+              {minimized.spotify ? t("[ + ] EXPAND") : t("[ _ ] MINIMIZE")}
             </button>
           </div>
         </div>
@@ -764,7 +778,7 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({
                   style={{ padding: "2px 8px", fontSize: "11px", marginLeft: "auto" }}
                   onClick={onRefreshSpotify}
                 >
-                  RETRY
+                  {t("RETRY")}
                 </button>
               </div>
             )}
@@ -774,7 +788,7 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({
               <div className="spotify-player-selector-row">
                 <div className="player-selector-label">
                   <span className="mono-font" style={{ fontSize: "11px", fontWeight: "bold" }}>
-                    PLAYER:
+                    {t("PLAYER:")}
                   </span>
                   <select
                     className="player-select-dropdown"
@@ -786,13 +800,13 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({
                       <option value="">
                         {spotify.activeDevice?.name
                           ? `${spotify.activeDevice.name} (${spotify.activeDevice.type})`
-                          : "No active Spotify player"}
+                          : t("No active Spotify player")}
                       </option>
                     ) : (
                       devices.map((d) => (
                         <option key={d.id} value={d.id}>
                           {d.isActive ? "▶ " : ""}
-                          {d.name} ({d.type}) {d.isActive ? "• ACTIVE" : ""}
+                          {d.name} ({d.type}) {d.isActive ? `• ${t("ACTIVE")}` : ""}
                         </option>
                       ))
                     )}
@@ -805,9 +819,9 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({
                     style={{ padding: "4px 8px", fontSize: "10px" }}
                     onClick={onFetchDevices}
                     disabled={loadingDevices}
-                    title="Refresh available Spotify devices"
+                    title={t("Refresh available Spotify devices")}
                   >
-                    {loadingDevices ? "..." : "🔄 DEVICES"}
+                    {loadingDevices ? "..." : t("🔄 DEVICES")}
                   </button>
                 )}
               </div>
@@ -822,7 +836,7 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({
                     className="spotify-art"
                   />
                 ) : (
-                  <div className="spotify-art">NO ART</div>
+                  <div className="spotify-art">{t("NO ART")}</div>
                 )}
 
                 <div className="spotify-info">
@@ -836,7 +850,7 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({
                         fontWeight: "bold",
                       }}
                     >
-                      {track.isPlaying ? "▶ PLAYING" : "❚❚ PAUSED"}
+                      {track.isPlaying ? t("▶ PLAYING") : t("❚❚ PAUSED")}
                     </span>
                   </div>
 
@@ -844,7 +858,7 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({
                   {track.album && <span className="spotify-album">{track.album}</span>}
                   {track.playlistName && (
                     <div className="spotify-playlist-tag">
-                      <span>▶ PLAYLIST:</span>
+                      <span>{t("▶ PLAYLIST:")}</span>
                       <span>{track.playlistName}</span>
                     </div>
                   )}
@@ -855,9 +869,9 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({
                       type="button"
                       className="ctrl-btn"
                       onClick={() => onPlayerControl("previous")}
-                      title="Previous Track"
+                      title={t("Previous Track")}
                     >
-                      |◀ PREV
+                      {t("|◀ PREV")}
                     </button>
                     <button
                       type="button"
@@ -868,15 +882,15 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({
                       }}
                       onClick={() => onPlayerControl(track.isPlaying ? "pause" : "play")}
                     >
-                      {track.isPlaying ? "❚❚ PAUSE" : "▶ PLAY"}
+                      {track.isPlaying ? t("❚❚ PAUSE") : t("▶ PLAY")}
                     </button>
                     <button
                       type="button"
                       className="ctrl-btn"
                       onClick={() => onPlayerControl("next")}
-                      title="Next Track"
+                      title={t("Next Track")}
                     >
-                      NEXT ▶|
+                      {t("NEXT ▶|")}
                     </button>
                     {onTestSpotifyWebhook && (
                       <button
@@ -884,10 +898,10 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({
                         className="ctrl-btn"
                         onClick={onTestSpotifyWebhook}
                         disabled={testingSpotifyWebhook || !webhookUri.trim()}
-                        title="Send current Spotify playback status to webhook"
+                        title={t("Send current Spotify playback status to webhook")}
                         style={{ marginLeft: "auto", fontSize: "11px" }}
                       >
-                        {testingSpotifyWebhook ? "DISPATCHING..." : "📡 WEBHOOK TEST"}
+                        {testingSpotifyWebhook ? t("DISPATCHING...") : t("📡 WEBHOOK TEST")}
                       </button>
                     )}
                   </div>
@@ -895,9 +909,9 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({
               </div>
             ) : spotify.connected ? (
               <div className="empty-state">
-                [ SPOTIFY CONNECTED // NO ACTIVE PLAYBACK ]
+                {t("[ SPOTIFY CONNECTED // NO ACTIVE PLAYBACK ]")}
                 <br />
-                Play music on Spotify desktop, web, or mobile app to view live track data.
+                {t("Play music on Spotify desktop, web, or mobile app to view live track data.")}
                 {onTestSpotifyWebhook && webhookUri.trim() && (
                   <div style={{ marginTop: "12px" }}>
                     <button
@@ -907,16 +921,16 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({
                       onClick={onTestSpotifyWebhook}
                       disabled={testingSpotifyWebhook}
                     >
-                      {testingSpotifyWebhook ? "SENDING..." : "📡 TEST SPOTIFY WEBHOOK"}
+                      {testingSpotifyWebhook ? t("SENDING...") : t("📡 TEST SPOTIFY WEBHOOK")}
                     </button>
                   </div>
                 )}
               </div>
             ) : (
               <div className="empty-state">
-                [ SPOTIFY NOT CONNECTED ]
+                {t("[ SPOTIFY NOT CONNECTED ]")}
                 <br />
-                Go to{" "}
+                {t("Go to")}{" "}
                 <button
                   type="button"
                   style={{
@@ -930,9 +944,9 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({
                   }}
                   onClick={onGoToConfig}
                 >
-                  Configuration
+                  {t("Configuration")}
                 </button>{" "}
-                to connect your Spotify account.
+                {t("to connect your Spotify account.")}
               </div>
             )}
 
@@ -942,7 +956,7 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({
                 <div className="spotify-playlist-header">
                   <div style={{ display: "flex", alignItems: "center", gap: "8px", flexWrap: "wrap" }}>
                     <span className="mono-font" style={{ fontSize: "12px", fontWeight: "bold" }}>
-                      CURRENT PLAYING SONG LIST ({currentSongs.length})
+                      {t("CURRENT PLAYING SONG LIST ({n})", { n: currentSongs.length })}
                     </span>
                     {songListContext && (
                       <span className="spotify-playlist-tag" style={{ fontSize: "10px" }}>
@@ -958,10 +972,10 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({
                       disabled={loadingSongList}
                     >
                       {loadingSongList
-                        ? "FETCHING..."
+                        ? t("FETCHING...")
                         : currentSongs.length
-                        ? "REFRESH QUEUE"
-                        : "LOAD SONG LIST"}
+                        ? t("REFRESH QUEUE")
+                        : t("LOAD SONG LIST")}
                     </button>
                   )}
                 </div>
@@ -977,7 +991,7 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({
                         {s.albumArt ? (
                           <img src={s.albumArt} alt={s.name} className="spotify-song-cover" />
                         ) : (
-                          <div className="spotify-song-cover">NO ART</div>
+                          <div className="spotify-song-cover">{t("NO ART")}</div>
                         )}
                         <div className="spotify-song-meta">
                           <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
@@ -985,7 +999,7 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({
                               {s.name}
                             </span>
                             {s.isPlaying && (
-                              <span className="spotify-now-playing-chip">▶ NOW PLAYING</span>
+                              <span className="spotify-now-playing-chip">{t("▶ NOW PLAYING")}</span>
                             )}
                           </div>
                           <span className="spotify-song-artist">
@@ -1004,9 +1018,9 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({
                               color: s.isPlaying ? "var(--ctp-crust)" : undefined,
                             }}
                             onClick={() => onPlayTrack(s.uri)}
-                            title={`Play ${s.name}`}
+                            title={s.name}
                           >
-                            {s.isPlaying ? "▶ PLAYING" : "▶ PLAY"}
+                            {s.isPlaying ? t("▶ PLAYING") : t("▶ PLAY")}
                           </button>
                         )}
                       </div>
@@ -1014,7 +1028,7 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({
                   </div>
                 ) : (
                   <div className="empty-state" style={{ padding: "12px" }}>
-                    [ NO SONGS IN QUEUE // CLICK LOAD SONG LIST TO REFRESH ]
+                    {t("[ NO SONGS IN QUEUE // CLICK LOAD SONG LIST TO REFRESH ]")}
                   </div>
                 )}
               </div>
@@ -1027,14 +1041,14 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({
       <section className="raw-card">
         <div className="card-title">
           <div className="card-title-left">
-            <h2>SPOTIFY SONG REQUEST</h2>
+            <h2>{t("SPOTIFY SONG REQUEST")}</h2>
             {minimized.songRequest ? (
               <span className="minimized-summary">
-                {songRequests.length} REQUESTS • {spotify.connected ? "ACTIVE" : "OFFLINE"}
+                {t("{n} REQUESTS • {state}", { n: songRequests.length, state: spotify.connected ? t("ACTIVE") : t("OFFLINE") })}
               </span>
             ) : (
               <span className="mono-font" style={{ fontSize: "12px", color: "var(--ctp-sapphire)" }}>
-                QUEUE & TIKTOK CHAT INTEGRATION
+                {t("QUEUE & TIKTOK CHAT INTEGRATION")}
               </span>
             )}
           </div>
@@ -1046,7 +1060,7 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({
                 style={{ padding: "2px 8px", fontSize: "11px" }}
                 onClick={onClearSongRequests}
               >
-                CLEAR HISTORY
+                {t("CLEAR HISTORY")}
               </button>
             )}
             <button
@@ -1054,9 +1068,9 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({
               className="btn btn-secondary"
               style={{ padding: "2px 8px", fontSize: "11px" }}
               onClick={() => toggleBox("songRequest")}
-              title={minimized.songRequest ? "Expand Song Request box" : "Minimize box"}
+              title={minimized.songRequest ? t("Expand Song Request box") : t("Minimize box")}
             >
-              {minimized.songRequest ? "[ + ] EXPAND" : "[ _ ] MINIMIZE"}
+              {minimized.songRequest ? t("[ + ] EXPAND") : t("[ _ ] MINIMIZE")}
             </button>
           </div>
         </div>
@@ -1065,11 +1079,11 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({
           <>
             {/* Auto-Queue Banner */}
             <div className="auto-queue-banner">
-              <span className="auto-queue-badge">⚡ AUTO-QUEUE ACTIVE</span>
+              <span className="auto-queue-badge">{t("⚡ AUTO-QUEUE ACTIVE")}</span>
               <span>
-                Viewers can request songs live in TikTok chat via:{" "}
+                {t("Viewers can request songs live in TikTok chat via:")}{" "}
                 <code className="mono-font" style={{ color: "var(--ctp-sapphire)", fontWeight: "bold" }}>
-                  !sr [Song Name or Spotify URL]
+                  {t("!sr [Song Name or Spotify URL]")}
                 </code>
               </span>
             </div>
@@ -1079,7 +1093,7 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({
               <input
                 type="text"
                 className="song-request-input"
-                placeholder="Search Spotify track or paste Spotify URL / URI (e.g. spotify:track:...)"
+                placeholder={t("Search Spotify track or paste Spotify URL / URI (e.g. spotify:track:...)")}
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
               />
@@ -1089,7 +1103,7 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({
                 style={{ padding: "6px 14px", fontSize: "12px" }}
                 disabled={searching || !searchQuery.trim() || !spotify.connected}
               >
-                {searching ? "SEARCHING..." : "SEARCH"}
+                {searching ? t("SEARCHING...") : t("SEARCH")}
               </button>
               <button
                 type="button"
@@ -1097,9 +1111,9 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({
                 style={{ padding: "6px 14px", fontSize: "12px" }}
                 onClick={handleDirectQueue}
                 disabled={Boolean(requestingTrack) || !searchQuery.trim() || !spotify.connected}
-                title="Add directly to queue (searches top match or uses URI)"
+                title={t("Add directly to queue (searches top match or uses URI)")}
               >
-                + DIRECT QUEUE
+                {t("+ DIRECT QUEUE")}
               </button>
             </form>
 
@@ -1108,43 +1122,43 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({
               <div>
                 <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "6px" }}>
                   <span className="mono-font" style={{ fontSize: "11px", fontWeight: "bold", color: "var(--ctp-subtext0)" }}>
-                    SEARCH RESULTS ({searchResults.length})
+                    {t("SEARCH RESULTS ({n})", { n: searchResults.length })}
                   </span>
                   <button
                     type="button"
                     style={{ background: "none", border: "none", color: "var(--ctp-overlay1)", cursor: "pointer", fontSize: "11px" }}
                     onClick={() => setSearchResults([])}
                   >
-                    [CLOSE RESULTS]
+                    {t("[CLOSE RESULTS]")}
                   </button>
                 </div>
                 <div className="song-search-results">
-                  {searchResults.map((t) => (
-                    <div key={t.id} className="song-search-card">
-                      {t.albumArt ? (
-                        <img src={t.albumArt} alt={t.name} className="song-search-art" />
+                  {searchResults.map((trackItem) => (
+                    <div key={trackItem.id} className="song-search-card">
+                      {trackItem.albumArt ? (
+                        <img src={trackItem.albumArt} alt={trackItem.name} className="song-search-art" />
                       ) : (
                         <div className="song-search-art" style={{ display: "grid", placeContent: "center", fontSize: "9px" }}>
-                          NO ART
+                          {t("NO ART")}
                         </div>
                       )}
                       <div className="song-search-meta">
-                        <span className="song-search-title" title={t.name}>
-                          {t.name}
+                        <span className="song-search-title" title={trackItem.name}>
+                          {trackItem.name}
                         </span>
-                        <span className="song-search-artist" title={t.artist}>
-                          {t.artist}
+                        <span className="song-search-artist" title={trackItem.artist}>
+                          {trackItem.artist}
                         </span>
-                        <span className="song-search-duration">{formatMs(t.durationMs)}</span>
+                        <span className="song-search-duration">{formatMs(trackItem.durationMs)}</span>
                       </div>
                       <button
                         type="button"
                         className="btn btn-primary"
                         style={{ padding: "4px 8px", fontSize: "10px", flexShrink: 0 }}
-                        onClick={() => handleQueueTrack(t.uri, t.name)}
-                        disabled={requestingTrack === t.uri}
+                        onClick={() => handleQueueTrack(trackItem.uri, trackItem.name)}
+                        disabled={requestingTrack === trackItem.uri}
                       >
-                        {requestingTrack === t.uri ? "ADDING..." : "+ QUEUE"}
+                        {requestingTrack === trackItem.uri ? t("ADDING...") : t("+ QUEUE")}
                       </button>
                     </div>
                   ))}
@@ -1155,13 +1169,13 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({
             {/* Song Request Queue History */}
             <div style={{ marginTop: "10px" }}>
               <span className="mono-font" style={{ fontSize: "11px", fontWeight: "bold", color: "var(--ctp-subtext0)", display: "block", marginBottom: "6px" }}>
-                RECENT SONG REQUESTS ({songRequests.length})
+                {t("RECENT SONG REQUESTS ({n})", { n: songRequests.length })}
               </span>
               {songRequests.length === 0 ? (
                 <div className="empty-state" style={{ padding: "12px" }}>
-                  [ NO REQUESTS YET ]
+                  {t("[ NO REQUESTS YET ]")}
                   <br />
-                  Search above or type <code className="mono-font">!sr song_name</code> in TikTok live chat to queue songs.
+                  {t("Search above or type")} <code className="mono-font">!sr song_name</code> {t("in TikTok live chat to queue songs.")}
                 </div>
               ) : (
                 <div className="song-request-history-list">
@@ -1199,10 +1213,10 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({
 
                       <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
                         <span className={`song-request-tag ${req.source === "tiktok_chat" ? "source-chat" : "source-web"}`}>
-                          {req.source === "tiktok_chat" ? "CHAT !SR" : "DASHBOARD"}
+                          {req.source === "tiktok_chat" ? t("CHAT !SR") : t("DASHBOARD")}
                         </span>
                         <span className={`song-request-tag ${req.status}`}>
-                          {req.status === "queued" ? "QUEUED" : "FAILED"}
+                          {req.status === "queued" ? t("QUEUED") : t("FAILED")}
                         </span>
                       </div>
                     </div>
@@ -1218,14 +1232,14 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({
       <section className="raw-card">
         <div className="card-title">
           <div className="card-title-left">
-            <h2>TIKTOK CHAT READER // TTS</h2>
+            <h2>{t("TIKTOK CHAT READER // TTS")}</h2>
             {minimized.chatTts ? (
               <span className="minimized-summary">
-                TTS: [{ttsEnabled ? "ON" : "OFF"}] • {recentChats.length} CHATS
+                {t("TTS: [{state}] • {n} CHATS", { state: ttsEnabled ? t("ON") : t("OFF"), n: recentChats.length })}
               </span>
             ) : (
               <span className="mono-font" style={{ fontSize: "12px", color: ttsEnabled ? "var(--ctp-green)" : "var(--ctp-subtext0)" }}>
-                STATUS: {ttsEnabled ? "● ACTIVE & READING" : "○ MUTED"}
+                {t("STATUS:")} {ttsEnabled ? t("● ACTIVE & READING") : t("○ MUTED")}
               </span>
             )}
           </div>
@@ -1235,9 +1249,9 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({
               className="btn btn-secondary"
               style={{ padding: "2px 8px", fontSize: "11px" }}
               onClick={() => toggleBox("chatTts")}
-              title={minimized.chatTts ? "Expand TikTok Chat Reader" : "Minimize box"}
+              title={minimized.chatTts ? t("Expand TikTok Chat Reader") : t("Minimize box")}
             >
-              {minimized.chatTts ? "[ + ] EXPAND" : "[ _ ] MINIMIZE"}
+              {minimized.chatTts ? t("[ + ] EXPAND") : t("[ _ ] MINIMIZE")}
             </button>
           </div>
         </div>
@@ -1250,10 +1264,10 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({
                 type="button"
                 className={`tts-toggle-button ${ttsEnabled ? "active" : ""}`}
                 onClick={toggleTts}
-                title="Toggle Text-to-Speech audio reader"
+                title={t("Toggle Text-to-Speech audio reader")}
               >
                 <span className="tts-status-dot"></span>
-                <span>TTS: {ttsEnabled ? "ON" : "OFF"}</span>
+                <span>TTS: {ttsEnabled ? t("ON") : t("OFF")}</span>
               </button>
 
               <div style={{ display: "flex", gap: "6px", alignItems: "center", flexWrap: "wrap" }}>
@@ -1266,18 +1280,18 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({
                     console.log(`[TTS] Testing Edge TTS voice: ${voice}`);
                     speakMessage("ทดสอบระบบอ่านข้อความเสียงภาษาไทย สวัสดีครับ");
                   }}
-                  title="Test current Edge TTS voice and speed settings"
+                  title={t("Test current Edge TTS voice and speed settings")}
                 >
-                  🔊 TEST VOICE
+                  {t("🔊 TEST VOICE")}
                 </button>
                 <button
                   type="button"
                   className="btn btn-destructive"
                   style={{ padding: "6px 12px", fontSize: "11px" }}
                   onClick={stopTtsSpeech}
-                  title="Immediately cancel ongoing speech audio"
+                  title={t("Immediately cancel ongoing speech audio")}
                 >
-                  ⏹ STOP SPEECH
+                  {t("⏹ STOP SPEECH")}
                 </button>
                 <button
                   type="button"
@@ -1285,7 +1299,7 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({
                   style={{ padding: "6px 12px", fontSize: "11px" }}
                   onClick={() => setShowTtsSettings(!showTtsSettings)}
                 >
-                  ⚙ SETTINGS
+                  {t("⚙ SETTINGS")}
                 </button>
                 {onTestChat && (
                   <button
@@ -1293,9 +1307,9 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({
                     className="btn btn-secondary"
                     style={{ padding: "6px 12px", fontSize: "11px" }}
                     onClick={() => onTestChat("สวัสดีครับ สตรีมเมอร์ สู้ๆ นะครับ")}
-                    title="Simulate a viewer message in TikTok chat"
+                    title={t("Simulate a viewer message in TikTok chat")}
                   >
-                    + TEST CHAT
+                    {t("+ TEST CHAT")}
                   </button>
                 )}
                 <button
@@ -1303,9 +1317,9 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({
                   className="btn btn-secondary"
                   style={{ padding: "6px 12px", fontSize: "11px" }}
                   onClick={handleTestTtsWebhook}
-                  title="Send a test TTS webhook payload (event: tts) to configured webhook URI"
+                  title={t("Send a test TTS webhook payload (event: tts) to configured webhook URI")}
                 >
-                  + TEST TTS WEBHOOK
+                  {t("+ TEST TTS WEBHOOK")}
                 </button>
                 {recentChats.length > 0 && onClearChats && (
                   <button
@@ -1314,7 +1328,7 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({
                     style={{ padding: "6px 12px", fontSize: "11px" }}
                     onClick={onClearChats}
                   >
-                    CLEAR
+                    {t("CLEAR")}
                   </button>
                 )}
               </div>
@@ -1326,8 +1340,8 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({
                 {/* Voice Selection */}
                 <div className="tts-setting-item">
                   <label className="tts-setting-label">
-                    <span>EDGE TTS VOICE</span>
-                    <span>{availableVoices.length} AVAILABLE</span>
+                    <span>{t("EDGE TTS VOICE")}</span>
+                    <span>{t("{n} AVAILABLE", { n: availableVoices.length })}</span>
                   </label>
                   <select
                     className="song-request-input"
@@ -1359,7 +1373,7 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({
                 {/* Volume Slider */}
                 <div className="tts-setting-item">
                   <label className="tts-setting-label">
-                    <span>VOLUME</span>
+                    <span>{t("VOLUME")}</span>
                     <span>{Math.round(ttsVolume * 100)}%</span>
                   </label>
                   <input
@@ -1388,7 +1402,7 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({
                 {/* Speed / Rate Slider */}
                 <div className="tts-setting-item">
                   <label className="tts-setting-label">
-                    <span>SPEED / RATE</span>
+                    <span>{t("SPEED / RATE")}</span>
                     <span>{ttsRate.toFixed(1)}x</span>
                   </label>
                   <input
@@ -1414,7 +1428,7 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({
                 {/* Pitch Slider */}
                 <div className="tts-setting-item">
                   <label className="tts-setting-label">
-                    <span>PITCH</span>
+                    <span>{t("PITCH")}</span>
                     <span>{ttsPitch.toFixed(1)}x</span>
                   </label>
                   <input
@@ -1440,7 +1454,7 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({
                 {/* Format Template */}
                 <div className="tts-setting-item">
                   <label className="tts-setting-label">
-                    <span>READ FORMAT</span>
+                    <span>{t("READ FORMAT")}</span>
                   </label>
                   <select
                     className="song-request-input"
@@ -1456,9 +1470,9 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({
                       saveAppConfig({ tts: { template: v } }, true);
                     }}
                   >
-                    <option value="{comment}">Comment Only (&quot;Hello&quot;)</option>
-                    <option value="{nickname} says {comment}">{`{nickname} says {comment}`}</option>
-                    <option value="{nickname}: {comment}">{`{nickname}: {comment}`}</option>
+                    <option value="{comment}">{t('Comment Only ("Hello")')}</option>
+                    <option value="{nickname} says {comment}">{t("{nickname} says {comment}")}</option>
+                    <option value="{nickname}: {comment}">{t("{nickname}: {comment}")}</option>
                   </select>
                 </div>
 
@@ -1478,7 +1492,7 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({
                         saveAppConfig({ tts: { ignoreBotCommands: v } }, true);
                       }}
                     />
-                    <span>Ignore bot commands (starts with &quot;!&quot;)</span>
+                    <span>{t('Ignore bot commands (starts with "!")')}</span>
                   </label>
                 </div>
 
@@ -1498,14 +1512,14 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({
                         saveAppConfig({ sendTtsWebhook: v, tts: { sendWebhook: v } }, true);
                       }}
                     />
-                    <span>Send incoming chats to Webhook (event: &quot;tts&quot;)</span>
+                    <span>{t('Send incoming chats to Webhook (event: "tts")')}</span>
                   </label>
                 </div>
 
                 {/* User Role Access: TTS speech */}
                 <div className="tts-setting-item">
                   <label className="tts-setting-label">
-                    <span>SPEAK CHATS FROM</span>
+                    <span>{t("SPEAK CHATS FROM")}</span>
                   </label>
                   <div style={{ display: "flex", flexWrap: "wrap", gap: "8px" }}>
                     {ALL_ROLES.map((r) => (
@@ -1523,7 +1537,7 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({
                             saveAppConfig({ tts: { allowedRoles: next } }, true);
                           }}
                         />
-                        {r.toUpperCase()}
+                        {t(r.toUpperCase())}
                       </label>
                     ))}
                   </div>
@@ -1532,7 +1546,7 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({
                 {/* User Role Access: bot commands */}
                 <div className="tts-setting-item">
                   <label className="tts-setting-label">
-                    <span>BOT COMMANDS FROM (!sr / !songrequest)</span>
+                    <span>{t("BOT COMMANDS FROM (!sr / !songrequest)")}</span>
                   </label>
                   <div style={{ display: "flex", flexWrap: "wrap", gap: "8px" }}>
                     {ALL_ROLES.map((r) => (
@@ -1547,7 +1561,7 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({
                             saveAppConfig({ commands: { allowedRoles: next } }, true);
                           }}
                         />
-                        {r.toUpperCase()}
+                        {t(r.toUpperCase())}
                       </label>
                     ))}
                   </div>
@@ -1559,9 +1573,9 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({
             <div className="live-chat-box">
               {recentChats.length === 0 ? (
                 <div className="empty-state" style={{ padding: "16px" }}>
-                  [ NO TIKTOK CHATS RECEIVED YET ]
+                  {t("[ NO TIKTOK CHATS RECEIVED YET ]")}
                   <br />
-                  Connect to a TikTok stream or click &quot;+ TEST CHAT&quot; above to simulate messages.
+                  {t('Connect to a TikTok stream or click "+ TEST CHAT" above to simulate messages.')}
                 </div>
               ) : (
                 recentChats.map((chat) => (
@@ -1592,7 +1606,7 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({
                           .replace("{comment}", chat.comment);
                         speakMessage(text);
                       }}
-                      title="Speak this message with TTS"
+                      title={t("Speak this message with TTS")}
                     >
                       🔊
                     </button>
@@ -1608,9 +1622,9 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({
       <section className="raw-card">
         <div className="card-title">
           <div className="card-title-left">
-            <h3>DISPATCH PAYLOAD SPECIFICATION</h3>
+            <h3>{t("DISPATCH PAYLOAD SPECIFICATION")}</h3>
             {minimized.payload ? (
-              <span className="minimized-summary">PAYLOAD: [{payloadSpecTab.toUpperCase()}]</span>
+              <span className="minimized-summary">{t("PAYLOAD: [{tab}]", { tab: payloadSpecTab.toUpperCase() })}</span>
             ) : null}
           </div>
           <div className="card-title-actions">
@@ -1622,7 +1636,7 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({
                   style={{ padding: "2px 8px", fontSize: "11px" }}
                   onClick={() => setPayloadSpecTab("tiktok")}
                 >
-                  TIKTOK GIFT
+                  {t("TIKTOK GIFT")}
                 </button>
                 <button
                   type="button"
@@ -1630,7 +1644,7 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({
                   style={{ padding: "2px 8px", fontSize: "11px" }}
                   onClick={() => setPayloadSpecTab("tts")}
                 >
-                  TIKTOK CHAT / TTS
+                  {t("TIKTOK CHAT / TTS")}
                 </button>
                 <button
                   type="button"
@@ -1638,7 +1652,7 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({
                   style={{ padding: "2px 8px", fontSize: "11px" }}
                   onClick={() => setPayloadSpecTab("spotify")}
                 >
-                  SPOTIFY STATUS
+                  {t("SPOTIFY STATUS")}
                 </button>
               </div>
             )}
@@ -1647,9 +1661,9 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({
               className="btn btn-secondary"
               style={{ padding: "2px 8px", fontSize: "11px" }}
               onClick={() => toggleBox("payload")}
-              title={minimized.payload ? "Expand payload specification" : "Minimize box"}
+              title={minimized.payload ? t("Expand payload specification") : t("Minimize box")}
             >
-              {minimized.payload ? "[ + ] EXPAND" : "[ _ ] MINIMIZE"}
+              {minimized.payload ? t("[ + ] EXPAND") : t("[ _ ] MINIMIZE")}
             </button>
           </div>
         </div>
@@ -1735,7 +1749,7 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({
             <h3>{t("WEBHOOK DISPATCH LOGS")} ({logs.length})</h3>
             {minimized.logs ? (
               <span className="minimized-summary">
-                {logs.length} LOGS • {logs.filter((l) => l.success).length} OK
+                {t("{n} LOGS • {ok} OK", { n: logs.length, ok: logs.filter((l) => l.success).length })}
               </span>
             ) : null}
           </div>
@@ -1755,9 +1769,9 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({
               className="btn btn-secondary"
               style={{ padding: "2px 8px", fontSize: "11px" }}
               onClick={() => toggleBox("logs")}
-              title={minimized.logs ? "Expand webhook logs" : "Minimize box"}
+              title={minimized.logs ? t("Expand webhook logs") : t("Minimize box")}
             >
-              {minimized.logs ? "[ + ] EXPAND" : "[ _ ] MINIMIZE"}
+              {minimized.logs ? t("[ + ] EXPAND") : t("[ _ ] MINIMIZE")}
             </button>
           </div>
         </div>
@@ -1781,7 +1795,7 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({
               <div className="empty-state">
                 [ {t("NO DISPATCHES RECORDED YET")} ]
                 <br />
-                Connect to a stream, play Spotify songs, or click &quot;TEST WEBHOOK&quot; to test.
+                {t('Connect to a stream, play Spotify songs, or click "TEST WEBHOOK" to test.')}
               </div>
             ) : (
               <div className="logs-list">
@@ -1811,25 +1825,25 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({
 
                       <span className={`log-val ${log.success ? "success" : "error"}`}>
                         {log.success
-                          ? `STATUS ${log.httpStatus || 200} OK`
-                          : log.error || `FAILED (${log.httpStatus || "ERR"})`}
+                          ? t("STATUS {code} OK", { code: log.httpStatus || 200 })
+                          : log.error || t("FAILED ({code})", { code: log.httpStatus || "ERR" })}
                       </span>
                     </div>
 
                     <div className="log-body">
                       <div className="log-line">
-                        <span className="log-key">PAYLOAD:</span>
+                        <span className="log-key">{t("PAYLOAD:")}</span>
                         <span className="log-val">{JSON.stringify(log.payload)}</span>
                       </div>
                       <div className="log-line">
-                        <span className="log-key">TARGET:</span>
+                        <span className="log-key">{t("TARGET:")}</span>
                         <span className="log-val" style={{ color: "var(--ctp-blue)" }}>
                           {log.webhookUri}
                         </span>
                       </div>
                       {log.response && (
                         <div className="log-line">
-                          <span className="log-key">RESPONSE:</span>
+                          <span className="log-key">{t("RESPONSE:")}</span>
                           <span className="log-val" style={{ color: "var(--ctp-subtext0)" }}>
                             {log.response}
                           </span>

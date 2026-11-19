@@ -31,11 +31,11 @@ export const Sidebar: React.FC<SidebarProps> = ({
         className="btn btn-secondary sidebar-toggle"
         aria-expanded={!collapsed}
         aria-controls="sidebar-navigation"
-        aria-label={collapsed ? "Expand navigation" : "Collapse navigation"}
-        title={collapsed ? "Expand navigation" : "Collapse navigation"}
+        aria-label={collapsed ? t("Expand navigation") : t("Collapse navigation")}
+        title={collapsed ? t("Expand navigation") : t("Collapse navigation")}
         onClick={() => setCollapsed((value) => !value)}
       >
-        {collapsed ? "☰" : "COLLAPSE NAV"}
+        {collapsed ? "☰" : t("COLLAPSE NAV")}
       </button>
       <div className="sidebar-brand">
         <h1 style={{ fontSize: "18px" }}>TIKTOK // DONATE</h1>
@@ -96,6 +96,20 @@ export const Sidebar: React.FC<SidebarProps> = ({
       </nav>
 
       <div className="sidebar-statuses">
+        <select
+          className="song-request-input"
+          style={{ width: "100%", padding: "6px", fontSize: "12px", marginBottom: "4px" }}
+          value={lang}
+          onChange={(e) => setLang(e.target.value as Lang)}
+          aria-label={t("Language")}
+        >
+          {langOptions.map((l) => (
+            <option key={l} value={l}>
+              {l === "en" ? "ENGLISH" : "ไทย"}
+            </option>
+          ))}
+        </select>
+
         <div
           style={{
             fontSize: "10px",
@@ -105,21 +119,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
             letterSpacing: "1px",
           }}
         >
-          <select
-          className="song-request-input"
-          style={{ width: "100%", padding: "6px", fontSize: "12px" }}
-          value={lang}
-          onChange={(e) => setLang(e.target.value as Lang)}
-          aria-label="Language / ภาษา"
-        >
-          {langOptions.map((l) => (
-            <option key={l} value={l}>
-              {l === "en" ? "ENGLISH" : "ไทย"}
-            </option>
-          ))}
-        </select>
-
-        {t("SYSTEM STATUS")}
+          {t("SYSTEM STATUS")}
         </div>
 
         {/* Backend Status Chip */}

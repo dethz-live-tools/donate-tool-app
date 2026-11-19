@@ -13,7 +13,7 @@ import {
   StudioScene,
   TikTokChatMessage,
 } from "./types";
-import { LangProvider } from "./i18n.tsx";
+import { useLang } from "./i18n.tsx";
 import { Sidebar } from "./components/Sidebar";
 import { DashboardTab } from "./components/DashboardTab";
 import { ConfigTab } from "./components/ConfigTab";
@@ -47,6 +47,7 @@ async function openAuthorizeUrl(url: string) {
 }
 
 export default function App() {
+  const { t } = useLang();
   const [currentPage, setCurrentPage] = useState<"dashboard" | "config" | "overlays" | "studio" | "about">(() => {
     const query = new URLSearchParams(window.location.search);
     return query.get("page") === "studio" || query.has("profile") ? "studio" : "dashboard";
@@ -60,6 +61,7 @@ export default function App() {
   const [status, setStatus] = useState<"disconnected" | "connecting" | "connected" | "error">("disconnected");
   const [backendOnline, setBackendOnline] = useState(false);
   const [roomId, setRoomId] = useState<string | null>(null);
+  const [tiktokError, setTiktokError] = useState<string | null>(null);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [logs, setLogs] = useState<LogEntry[]>([]);
   const [loading, setLoading] = useState(false);
@@ -141,7 +143,8 @@ export default function App() {
           if (data.webhookUriSpotify) setWebhookUriSpotify(data.webhookUriSpotify);
           setStatus(data.status);
           setRoomId(data.roomId);
-          if (data.error) setErrorMsg(data.error);
+          setTiktokError(data.error || null);
+          if (data.status === "error" && data.error) setErrorMsg(data.error);
           setLogs(data.logs || []);
           if (data.recentChats) setRecentChats(data.recentChats);
           if (data.songRequests) setSongRequests(data.songRequests);
@@ -163,7 +166,8 @@ export default function App() {
             if (data.webhookUri) setWebhookUri(data.webhookUri);
             setStatus(data.status);
             setRoomId(data.roomId);
-            if (data.error) setErrorMsg(data.error);
+            setTiktokError(data.error || null);
+            if (data.status === "error" && data.error) setErrorMsg(data.error);
             setLogs(data.logs || []);
             if (data.recentChats) setRecentChats(data.recentChats);
             if (data.songRequests) setSongRequests(data.songRequests);
@@ -195,6 +199,7 @@ export default function App() {
             const data: ServerState = JSON.parse(event.data);
             setStatus(data.status);
             setRoomId(data.roomId);
+            setTiktokError(data.error || null);
             setLogs(data.logs || []);
             if (data.recentChats) {
               setRecentChats(data.recentChats);
@@ -266,12 +271,12 @@ export default function App() {
   async function handleConnect(e?: React.FormEvent) {
     if (e) e.preventDefault();
     if (!username.trim()) {
-      setErrorMsg("TikTok username is required. Configure it in Settings.");
+      setErrorMsg(t("TikTok username is required. Configure it in Settings."));
       setCurrentPage("config");
       return;
     }
     if (!webhookUri.trim()) {
-      setErrorMsg("Webhook URI is required. Configure it in Settings.");
+      setErrorMsg(t("Webhook URI is required. Configure it in Settings."));
       setCurrentPage("config");
       return;
     }
@@ -293,10 +298,10 @@ export default function App() {
       });
       const data = await res.json();
       if (!data.success) {
-        setErrorMsg(data.error || "Failed to start connection");
+        setErrorMsg(data.error || t("Failed to start connection"));
       }
     } catch (err: any) {
-      setErrorMsg(`Backend unreachable: ${err.message}. Ensure bridge server is running.`);
+      setErrorMsg(t("Backend unreachable: {err}. Ensure bridge server is running.", { err: err.message }));
     } finally {
       setLoading(false);
     }
@@ -307,7 +312,7 @@ export default function App() {
     try {
       await fetch(`${API_BASE}/api/disconnect`, { method: "POST" });
     } catch (err: any) {
-      setErrorMsg(`Error disconnecting: ${err.message}`);
+      setErrorMsg(t("Error disconnecting: {err}", { err: err.message }));
     } finally {
       setLoading(false);
     }
@@ -332,12 +337,12 @@ export default function App() {
       });
       const data = await res.json();
       if (data.success) {
-        setTestResult("Saved configuration to config.yaml");
+        setTestResult(t("Saved configuration to config.yaml"));
       } else {
-        setErrorMsg(data.error || "Failed to save configuration");
+        setErrorMsg(data.error || t("Failed to save configuration"));
       }
     } catch (err: any) {
-      setErrorMsg(`Failed to save configuration: ${err.message}`);
+      setErrorMsg(t("Failed to save configuration: {err}", { err: err.message }));
     } finally {
       setLoading(false);
     }
@@ -345,7 +350,7 @@ export default function App() {
 
   async function handleTestWebhook() {
     if (!webhookUri.trim()) {
-      setErrorMsg("Please enter a Webhook URI in Settings first");
+      setErrorMsg(t("Please enter a Webhook URI in Settings first"));
       setCurrentPage("config");
       return;
     }
@@ -367,12 +372,12 @@ export default function App() {
       });
       const data = await res.json();
       if (data.success) {
-        setTestResult(`Test webhook delivered successfully (Status ${data.entry?.httpStatus || 200})`);
+        setTestResult(t("Test webhook delivered successfully (Status {status})", { status: data.entry?.httpStatus || 200 }));
       } else {
-        setErrorMsg(`Test webhook failed: ${data.entry?.error || data.error || "Unknown error"}`);
+        setErrorMsg(t("Test webhook failed: {err}", { err: data.entry?.error || data.error || t("Unknown error") }));
       }
     } catch (err: any) {
-      setErrorMsg(`Could not trigger test webhook: ${err.message}`);
+      setErrorMsg(t("Could not trigger test webhook: {err}", { err: err.message }));
     } finally {
       setTesting(false);
     }
@@ -380,7 +385,7 @@ export default function App() {
 
   async function handleTestSpotifyWebhook() {
     if (!webhookUri.trim()) {
-      setErrorMsg("Please enter a Webhook URI in Settings first");
+      setErrorMsg(t("Please enter a Webhook URI in Settings first"));
       setCurrentPage("config");
       return;
     }
@@ -400,15 +405,15 @@ export default function App() {
       const data = await res.json();
       if (data.success) {
         setTestResult(
-          `Spotify webhook delivered successfully (Status ${data.entry?.httpStatus || 200})`
+          t("Spotify webhook delivered successfully (Status {status})", { status: data.entry?.httpStatus || 200 })
         );
       } else {
         setErrorMsg(
-          `Spotify webhook dispatch failed: ${data.entry?.error || data.error || "Unknown error"}`
+          t("Spotify webhook dispatch failed: {err}", { err: data.entry?.error || data.error || t("Unknown error") })
         );
       }
     } catch (err: any) {
-      setErrorMsg(`Could not trigger Spotify test webhook: ${err.message}`);
+      setErrorMsg(t("Could not trigger Spotify test webhook: {err}", { err: err.message }));
     } finally {
       setTestingSpotifyWebhook(false);
     }
@@ -417,7 +422,7 @@ export default function App() {
   async function handleSaveSpotifyConfig(e: React.FormEvent) {
     e.preventDefault();
     if (!spotifyClientId.trim()) {
-      setErrorMsg("Spotify Client ID is required");
+      setErrorMsg(t("Spotify Client ID is required"));
       return;
     }
 
@@ -440,7 +445,7 @@ export default function App() {
       setSavingSpotify(false);
       await openAuthorizeUrl(`${API_BASE}/api/spotify/login`);
     } catch (err: any) {
-      setErrorMsg(`Failed to save Spotify config: ${err.message}`);
+      setErrorMsg(t("Failed to save Spotify config: {err}", { err: err.message }));
       setSavingSpotify(false);
     }
   }
@@ -454,7 +459,7 @@ export default function App() {
         setSpotify(data.spotify);
       }
     } catch (err: any) {
-      setErrorMsg(`Failed to refresh Spotify: ${err.message}`);
+      setErrorMsg(t("Failed to refresh Spotify: {err}", { err: err.message }));
     } finally {
       setLoading(false);
     }
@@ -464,7 +469,7 @@ export default function App() {
     try {
       await fetch(`${API_BASE}/api/spotify/disconnect`, { method: "POST" });
     } catch (err: any) {
-      setErrorMsg(`Failed to disconnect Spotify: ${err.message}`);
+      setErrorMsg(t("Failed to disconnect Spotify: {err}", { err: err.message }));
     }
   }
 
@@ -473,10 +478,10 @@ export default function App() {
       const res = await fetch(`${API_BASE}/api/spotify/player/${action}`, { method: "POST" });
       const data = await res.json();
       if (!data.success) {
-        setErrorMsg(`Spotify control error: ${data.error}`);
+        setErrorMsg(t("Spotify control error: {err}", { err: data.error }));
       }
     } catch (err: any) {
-      setErrorMsg(`Failed to send player command: ${err.message}`);
+      setErrorMsg(t("Failed to send player command: {err}", { err: err.message }));
     }
   }
 
@@ -489,10 +494,10 @@ export default function App() {
         setCurrentSongs(data.tracks || []);
         setSongListContext(data.contextName || null);
       } else if (data.error) {
-        setErrorMsg(`Song list error: ${data.error}`);
+        setErrorMsg(t("Song list error: {err}", { err: data.error }));
       }
     } catch (err: any) {
-      setErrorMsg(`Failed to fetch song list: ${err.message}`);
+      setErrorMsg(t("Failed to fetch song list: {err}", { err: err.message }));
     } finally {
       setLoadingSongList(false);
     }
@@ -506,10 +511,10 @@ export default function App() {
       if (data.success) {
         setDevices(data.devices || []);
       } else if (data.error) {
-        setErrorMsg(`Devices error: ${data.error}`);
+        setErrorMsg(t("Devices error: {err}", { err: data.error }));
       }
     } catch (err: any) {
-      setErrorMsg(`Failed to fetch devices: ${err.message}`);
+      setErrorMsg(t("Failed to fetch devices: {err}", { err: err.message }));
     } finally {
       setLoadingDevices(false);
     }
@@ -525,16 +530,16 @@ export default function App() {
       });
       const data = await res.json();
       if (data.success) {
-        setTestResult("Playback transferred to selected device");
+        setTestResult(t("Playback transferred to selected device"));
         setTimeout(() => {
           handleFetchDevices();
           handleFetchSongList();
         }, 600);
       } else {
-        setErrorMsg(`Device transfer error: ${data.error}`);
+        setErrorMsg(t("Device transfer error: {err}", { err: data.error }));
       }
     } catch (err: any) {
-      setErrorMsg(`Failed to transfer playback: ${err.message}`);
+      setErrorMsg(t("Failed to transfer playback: {err}", { err: err.message }));
     }
   }
 
@@ -547,12 +552,12 @@ export default function App() {
       });
       const data = await res.json();
       if (!data.success) {
-        setErrorMsg(`Spotify play error: ${data.error}`);
+        setErrorMsg(t("Spotify play error: {err}", { err: data.error }));
       } else {
         setTimeout(handleFetchSongList, 700);
       }
     } catch (err: any) {
-      setErrorMsg(`Failed to play track: ${err.message}`);
+      setErrorMsg(t("Failed to play track: {err}", { err: err.message }));
     }
   }
 
@@ -596,13 +601,13 @@ export default function App() {
       });
       const data = await res.json();
       if (data.success) {
-        setTestResult(`Overlay "${data.overlay?.name || overlayId}" installed and ready for OBS!`);
+        setTestResult(t('Overlay "{name}" installed and ready for OBS!', { name: data.overlay?.name || overlayId }));
         await fetchOverlays();
       } else {
-        setErrorMsg(`Failed to install overlay: ${data.error}`);
+        setErrorMsg(t("Failed to install overlay: {err}", { err: data.error }));
       }
     } catch (err: any) {
-      setErrorMsg(`Error installing overlay: ${err.message}`);
+      setErrorMsg(t("Error installing overlay: {err}", { err: err.message }));
     }
   }
 
@@ -615,13 +620,13 @@ export default function App() {
       });
       const resData = await res.json();
       if (resData.success) {
-        setTestResult(`Custom overlay "${data.name}" created at /overlays/${resData.overlay?.id}/`);
+        setTestResult(t('Custom overlay "{name}" created at /overlays/{id}/', { name: data.name, id: resData.overlay?.id }));
         await fetchOverlays();
       } else {
-        setErrorMsg(`Failed to create overlay: ${resData.error}`);
+        setErrorMsg(t("Failed to create overlay: {err}", { err: resData.error }));
       }
     } catch (err: any) {
-      setErrorMsg(`Error creating overlay: ${err.message}`);
+      setErrorMsg(t("Error creating overlay: {err}", { err: err.message }));
     }
   }
 
@@ -632,13 +637,13 @@ export default function App() {
       });
       const data = await res.json();
       if (data.success) {
-        setTestResult(`Overlay "${id}" deleted.`);
+        setTestResult(t('Overlay "{id}" deleted.', { id }));
         await fetchOverlays();
       } else {
-        setErrorMsg(`Failed to delete overlay: ${data.error}`);
+        setErrorMsg(t("Failed to delete overlay: {err}", { err: data.error }));
       }
     } catch (err: any) {
-      setErrorMsg(`Error deleting overlay: ${err.message}`);
+      setErrorMsg(t("Error deleting overlay: {err}", { err: err.message }));
     }
   }
   async function handleSaveStudio(nextScene: StudioScene) {
@@ -650,12 +655,12 @@ export default function App() {
       });
       const data = await res.json();
       if (!res.ok || !data.success || !data.studio) {
-        throw new Error(data.error || `Save failed (${res.status})`);
+        throw new Error(data.error || t("Save failed ({status})", { status: res.status }));
       }
       setStudioScene(data.studio);
     } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : "Network error";
-      setErrorMsg(`Error saving studio layout: ${msg}`);
+      const msg = err instanceof Error ? err.message : t("Unknown error");
+      setErrorMsg(t("Error saving studio layout: {err}", { err: msg }));
       throw err;
     }
   }
@@ -683,15 +688,15 @@ export default function App() {
       });
       const data = await res.json();
       if (data.success) {
-        setTestResult(`Queued "${data.item?.trackName || queryOrUri}" in Spotify!`);
+        setTestResult(t('Queued "{name}" in Spotify!', { name: data.item?.trackName || queryOrUri }));
         handleFetchSongList();
         return true;
       } else {
-        setErrorMsg(`Song request failed: ${data.error || "Could not queue track"}`);
+        setErrorMsg(t("Song request failed: {err}", { err: data.error || t("Could not queue track") }));
         return false;
       }
     } catch (err: any) {
-      setErrorMsg(`Song request error: ${err.message}`);
+      setErrorMsg(t("Song request error: {err}", { err: err.message }));
       return false;
     }
   }
@@ -717,7 +722,7 @@ export default function App() {
         setRecentChats((prev) => [data.chat, ...prev.slice(0, 49)]);
       }
     } catch (err: any) {
-      setErrorMsg(`Test chat failed: ${err.message}`);
+      setErrorMsg(t("Test chat failed: {err}", { err: err.message }));
     }
   }
 
@@ -731,10 +736,9 @@ export default function App() {
   }
 
   return (
-    <LangProvider>
-      <div className="app-layout">
-        {/* Sidebar Navigation */}
-        <Sidebar
+    <div className="app-layout">
+      {/* Sidebar Navigation */}
+      <Sidebar
         currentPage={currentPage}
         onSelectPage={setCurrentPage}
         status={status}
@@ -757,7 +761,7 @@ export default function App() {
               style={{ padding: "2px 8px", fontSize: "11px", marginLeft: "auto" }}
               onClick={() => setErrorMsg(null)}
             >
-              DISMISS
+              {t("DISMISS")}
             </button>
           </div>
         )}
@@ -773,7 +777,7 @@ export default function App() {
           <div className="alert-banner info">
             <span>[UPDATE]</span>
             <span>
-              {latestRelease.tag} is available (you have {__APP_VERSION__}){" "}
+              {t("{tag} is available (you have {v})", { tag: latestRelease.tag, v: __APP_VERSION__ })}{" "}
               <a
                 href="#"
                 onClick={(e) => {
@@ -788,11 +792,11 @@ export default function App() {
                   })();
                 }}
               >
-                download
+                {t("download")}
               </a>
             </span>
             <button type="button" onClick={() => setDismissedUpdate(true)}>
-              DISMISS
+              {t("DISMISS")}
             </button>
           </div>
         )}
@@ -810,6 +814,7 @@ export default function App() {
             username={username}
             webhookUri={webhookUri}
             status={status}
+            tiktokError={tiktokError}
             loading={loading}
             testing={testing}
             spotify={spotify}
@@ -891,7 +896,6 @@ export default function App() {
           />
         )}
       </main>
-      </div>
-    </LangProvider>
+    </div>
   );
 }

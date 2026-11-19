@@ -80,7 +80,7 @@ export const ConfigTab: React.FC<ConfigTabProps> = ({
               id="tiktok-username"
               className="raw-input"
               type="text"
-              placeholder="e.g. streamer_name (without or with @)"
+              placeholder={t("e.g. streamer_name (without or with @)")}
               value={username}
               onChange={(e) => setUsername(e.target.value)}
               disabled={status === "connected" || status === "connecting"}
@@ -185,7 +185,7 @@ export const ConfigTab: React.FC<ConfigTabProps> = ({
       {/* Spotify Integration Configuration */}
       <section className="raw-card elevated">
         <div className="card-title">
-          <h2>SPOTIFY INTEGRATION CONFIGURATION</h2>
+          <h2>{t("SPOTIFY INTEGRATION CONFIGURATION")}</h2>
           <span
             className="mono-font"
             style={{
@@ -198,7 +198,7 @@ export const ConfigTab: React.FC<ConfigTabProps> = ({
               fontWeight: "bold",
             }}
           >
-            {spotify.error ? "! ERROR" : spotify.connected ? "✓ LINKED" : "UNLINKED"}
+            {spotify.error ? t("! ERROR") : spotify.connected ? t("✓ LINKED") : t("UNLINKED")}
           </span>
         </div>
 
@@ -212,7 +212,7 @@ export const ConfigTab: React.FC<ConfigTabProps> = ({
               style={{ padding: "2px 8px", fontSize: "11px", marginLeft: "auto" }}
               onClick={onRefreshSpotify}
             >
-              RETRY
+              {t("RETRY")}
             </button>
           </div>
         )}
@@ -220,13 +220,13 @@ export const ConfigTab: React.FC<ConfigTabProps> = ({
         <form onSubmit={onSaveSpotifyConfig} className="spotify-setup-panel">
           <div className="form-group">
             <label className="form-label" htmlFor="spotify-client-id">
-              SPOTIFY CLIENT ID
+              {t("SPOTIFY CLIENT ID")}
             </label>
             <input
               id="spotify-client-id"
               className="raw-input"
               type="text"
-              placeholder="Paste Client ID from Spotify Dashboard"
+              placeholder={t("Paste Client ID from Spotify Dashboard")}
               value={spotifyClientId}
               onChange={(e) => setSpotifyClientId(e.target.value)}
             />
@@ -234,7 +234,7 @@ export const ConfigTab: React.FC<ConfigTabProps> = ({
 
           <div className="form-group">
             <label className="form-label" htmlFor="spotify-client-secret">
-              SPOTIFY CLIENT SECRET
+              {t("SPOTIFY CLIENT SECRET")}
             </label>
             <input
               id="spotify-client-secret"
@@ -242,8 +242,8 @@ export const ConfigTab: React.FC<ConfigTabProps> = ({
               type="password"
               placeholder={
                 spotify.hasClientSecret
-                  ? "•••••••• (Secret saved. Leave blank to keep)"
-                  : "Paste Client Secret"
+                  ? t("•••••••• (Secret saved. Leave blank to keep)")
+                  : t("Paste Client Secret")
               }
               value={spotifyClientSecret}
               onChange={(e) => setSpotifyClientSecret(e.target.value)}
@@ -251,7 +251,7 @@ export const ConfigTab: React.FC<ConfigTabProps> = ({
           </div>
 
           <div className="form-helper" style={{ color: "var(--ctp-subtext0)" }}>
-            Add this exact Redirect URI to your Spotify Developer App settings:{" "}
+            {t("Add this exact Redirect URI to your Spotify Developer App settings:")}{" "}
             <code
               className="mono-font"
               style={{
@@ -265,7 +265,7 @@ export const ConfigTab: React.FC<ConfigTabProps> = ({
               http://127.0.0.1:3001/api/spotify/callback
             </code>
             <div style={{ marginTop: "6px", fontSize: "11px", color: "var(--ctp-lavender)" }}>
-              Includes permissions for player control, active playlist discovery, and full playback state. Click AUTHORIZE SPOTIFY to refresh scopes if granted previously.
+              {t("Includes permissions for player control, active playlist discovery, and full playback state. Click AUTHORIZE SPOTIFY to refresh scopes if granted previously.")}
             </div>
           </div>
 
@@ -275,7 +275,7 @@ export const ConfigTab: React.FC<ConfigTabProps> = ({
               className="btn btn-primary"
               disabled={savingSpotify || !spotifyClientId.trim()}
             >
-              {savingSpotify ? "SAVING..." : "AUTHORIZE SPOTIFY"}
+              {savingSpotify ? t("SAVING...") : t("AUTHORIZE SPOTIFY")}
             </button>
 
             {spotify.connected && (
@@ -286,7 +286,7 @@ export const ConfigTab: React.FC<ConfigTabProps> = ({
                   onClick={onRefreshSpotify}
                   disabled={loading}
                 >
-                  RECHECK STATUS
+                  {t("RECHECK STATUS")}
                 </button>
                 {onTestSpotifyWebhook && (
                   <button
@@ -294,9 +294,9 @@ export const ConfigTab: React.FC<ConfigTabProps> = ({
                     className="btn btn-secondary"
                     onClick={onTestSpotifyWebhook}
                     disabled={testingSpotifyWebhook || !webhookUri.trim()}
-                    title="Send current Spotify playback status to webhook"
+                    title={t("Send current Spotify playback status to webhook")}
                   >
-                    {testingSpotifyWebhook ? "SENDING..." : "TEST SPOTIFY WEBHOOK"}
+                    {testingSpotifyWebhook ? t("SENDING...") : t("TEST SPOTIFY WEBHOOK")}
                   </button>
                 )}
                 <button
@@ -304,7 +304,7 @@ export const ConfigTab: React.FC<ConfigTabProps> = ({
                   className="btn btn-destructive"
                   onClick={onDisconnectSpotify}
                 >
-                  DISCONNECT SPOTIFY
+                  {t("DISCONNECT SPOTIFY")}
                 </button>
               </>
             )}

@@ -33,7 +33,7 @@ export const AboutTab: React.FC<AboutTabProps> = ({
     <section className="raw-card elevated about-card">
       <h2 className="card-title">{t("ABOUT // donate-socket")}</h2>
       <p className="form-helper">
-        Real-time TikTok LIVE donation bridge and Spotify playback status desktop tool.
+        {t("Real-time TikTok LIVE donation bridge and Spotify playback status desktop tool.")}
       </p>
 
       <dl className="about-info">

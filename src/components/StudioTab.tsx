@@ -1,5 +1,6 @@
 import React, { useEffect, useRef, useState } from "react";
 import { OverlayMeta, StudioLayer, StudioScene } from "../types";
+import { useLang } from "../i18n.tsx";
 
 interface StudioTabProps {
   apiBase: string;
@@ -41,6 +42,7 @@ export const StudioTab: React.FC<StudioTabProps> = ({
   onSaveStudio,
   onGoToMarket,
 }) => {
+  const { t } = useLang();
   const [scene, setScene] = useState<StudioScene>(studio);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [profiles, setProfiles] = useState<StudioProfile[]>([]);
@@ -94,7 +96,7 @@ export const StudioTab: React.FC<StudioTabProps> = ({
         const response = await fetch(`${apiBase}/api/overlays/studio/profiles`, { signal: controller.signal });
         const data = await response.json();
         if (!response.ok || !data.success || !Array.isArray(data.profiles)) {
-          throw new Error(data.error || `Could not load profiles (${response.status})`);
+          throw new Error(data.error || t("Could not load profiles ({status})", { status: response.status }));
         }
         if (!controller.signal.aborted && profilesVersion === profilesVersionRef.current) {
           setProfiles(data.profiles);
@@ -102,7 +104,7 @@ export const StudioTab: React.FC<StudioTabProps> = ({
           if (requestedId) await changeProfile(requestedId);
         }
       } catch (err) {
-        if (!controller.signal.aborted && profilesVersion === profilesVersionRef.current) setProfilesError(err instanceof Error ? err.message : "Could not load profiles");
+        if (!controller.signal.aborted && profilesVersion === profilesVersionRef.current) setProfilesError(err instanceof Error ? err.message : t("Could not load profiles"));
       }
     })();
     return () => {
@@ -186,7 +188,7 @@ export const StudioTab: React.FC<StudioTabProps> = ({
             signal: controller.signal,
           });
           const data = await response.json();
-          if (!response.ok || !data.success) throw new Error(data.error || `Could not save profile (${response.status})`);
+          if (!response.ok || !data.success) throw new Error(data.error || t("Could not save profile ({status})", { status: response.status }));
         } else {
           await onSaveStudioRef.current(next);
         }
@@ -196,7 +198,7 @@ export const StudioTab: React.FC<StudioTabProps> = ({
         return true;
       } catch (err) {
         if (mountedRef.current && selectionRef.current === selection) {
-          setError(err instanceof Error ? err.message : "Could not save scene");
+          setError(err instanceof Error ? err.message : t("Could not save scene"));
         }
         return false;
       } finally {
@@ -270,7 +272,7 @@ export const StudioTab: React.FC<StudioTabProps> = ({
         });
         const data = await response.json();
         if (!response.ok || !data.success || (create ? !data.profile?.id || !data.profile.scene || !Array.isArray(data.profiles) : !data.studio)) {
-          throw new Error(data.error || `Could not ${create ? "create" : "load"} profile (${response.status})`);
+          throw new Error(data.error || t(create ? "Could not create profile ({status})" : "Could not load profiles ({status})", { status: response.status }));
         }
         if (!mountedRef.current || controller.signal.aborted) return;
         next = create ? data.profile.scene : data.studio;
@@ -297,7 +299,7 @@ export const StudioTab: React.FC<StudioTabProps> = ({
       dirtyRef.current = false;
       setSaving(false);
     } catch (err) {
-      if (mountedRef.current && !controller.signal.aborted) setError(err instanceof Error ? err.message : "Could not change profile");
+      if (mountedRef.current && !controller.signal.aborted) setError(err instanceof Error ? err.message : t("Could not change profile"));
     } finally {
       if (mountedRef.current && !controller.signal.aborted) {
         busyRef.current = false;
@@ -402,19 +404,23 @@ export const StudioTab: React.FC<StudioTabProps> = ({
     if (busyRef.current) return;
     try {
       const input = externalUrl.trim();
-      if (!/^https?:\/\//i.test(input)) throw new Error("Enter an absolute HTTP or HTTPS URL.");
+      if (!/^https?:\/\//i.test(input)) throw new Error(t("Enter an absolute HTTP or HTTPS URL."));
       const url = new URL(input);
       if ((url.protocol !== "http:" && url.protocol !== "https:") || url.username || url.password) {
-        throw new Error("Use an HTTP or HTTPS URL without a username or password.");
+        throw new Error(t("Use an HTTP or HTTPS URL without a username or password."));
       }
-      const host = url.hostname.toLowerCase();
+      const host = url.hostname.toLowerCase().replace(/^\[|\]$/g, "");
       if (
         host === "169.254.169.254" ||
+        host === "169.254.169.253" ||
         host.startsWith("169.254.") ||
         host === "metadata.google.internal" ||
-        host.startsWith("fe80:")
+        host === "fd00:ec2::254" ||
+        host.startsWith("fe80:") ||
+        host.startsWith("::ffff:a9fe:") ||
+        host.startsWith("::ffff:169.254.")
       ) {
-        throw new Error("Targeting cloud metadata services is forbidden.");
+        throw new Error(t("Targeting cloud metadata services is forbidden."));
       }
       const port = url.port ? Number(url.port) : (url.protocol === "https:" ? 443 : 80);
       const isLoopback =
@@ -422,18 +428,21 @@ export const StudioTab: React.FC<StudioTabProps> = ({
         host === "127.0.0.1" ||
         host === "0.0.0.0" ||
         host === "::1" ||
-        host === "[::1]" ||
-        host === "[::]" ||
-        host.startsWith("127.");
+        host === "::" ||
+        host.startsWith("127.") ||
+        host.startsWith("::ffff:7f") ||
+        host.startsWith("::ffff:127.") ||
+        host === "::ffff:0:0" ||
+        host === "::ffff:0.0.0.0";
       if (isLoopback && (port === 3001 || port === Number(window.location.port))) {
-        throw new Error("External layer cannot target the application's own API port.");
+        throw new Error(t("External layer cannot target the application's own API port."));
       }
       handleAddLayer({ id: "", name: externalName.trim() || url.hostname, width: 480, height: 160 }, url.href);
       setExternalUrl("");
       setExternalName("");
       setExternalError("");
     } catch (err) {
-      setExternalError(err instanceof Error ? err.message : "Invalid external overlay URL.");
+      setExternalError(err instanceof Error ? err.message : t("Invalid external overlay URL."));
     }
   }
 
@@ -503,12 +512,12 @@ export const StudioTab: React.FC<StudioTabProps> = ({
     event.preventDefault();
     try {
       const url = new URL(profileUrl.trim(), window.location.href);
-      if (url.protocol !== "http:" && url.protocol !== "https:") throw new Error("Use an HTTP or HTTPS Studio link.");
+      if (url.protocol !== "http:" && url.protocol !== "https:") throw new Error(t("Use an HTTP or HTTPS Studio link."));
       const id = url.searchParams.get("profile");
-      if (!id) throw new Error("Studio link must include ?profile=<id>.");
+      if (!id) throw new Error(t("Studio link must include ?profile=<id>."));
       void changeProfile(id);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Invalid Studio link.");
+      setError(err instanceof Error ? err.message : t("Invalid Studio link."));
     }
   }
 
@@ -521,7 +530,7 @@ export const StudioTab: React.FC<StudioTabProps> = ({
       window.clearTimeout(copyTimerRef.current);
       copyTimerRef.current = window.setTimeout(() => setCopied(false), 2000);
     } catch {
-      if (mountedRef.current && selectionRef.current === selection) prompt("Copy OBS Studio URL:", obsStudioUrl);
+      if (mountedRef.current && selectionRef.current === selection) prompt(t("Copy OBS Studio URL:"), obsStudioUrl);
     }
   }
 
@@ -534,14 +543,14 @@ export const StudioTab: React.FC<StudioTabProps> = ({
       <section className="raw-card elevated">
         <div className="card-title">
           <div>
-            <h2>OVERLAY STUDIO // SCENE COMPOSER</h2>
+            <h2>{t("OVERLAY STUDIO // SCENE COMPOSER")}</h2>
             <span className="mono-font" style={{ fontSize: "12px", color: "var(--ctp-subtext0)" }}>
-              MERGE &amp; ARRANGE MULTIPLE OVERLAYS INTO ONE OBS SCREEN
+              {t("MERGE & ARRANGE MULTIPLE OVERLAYS INTO ONE OBS SCREEN")}
             </span>
           </div>
           <div style={{ display: "flex", gap: "8px", alignItems: "center", flexWrap: "wrap" }}>
             <span className="mono-font" style={{ fontSize: "11px", color: error || profilesError ? "var(--status-error)" : saving || busy ? "var(--status-warning)" : "var(--status-success)" }}>
-              {error || profilesError ? "[ ERROR ]" : busy ? "[ LOADING... ]" : saving ? "[ SAVING... ]" : "[ READY ]"}
+              {error || profilesError ? t("[ ERROR ]") : busy ? t("[ LOADING... ]") : saving ? t("[ SAVING... ]") : t("[ READY ]")}
             </span>
             <button
               type="button"
@@ -553,7 +562,7 @@ export const StudioTab: React.FC<StudioTabProps> = ({
                 setPreviewExpanded(false);
               }}
             >
-              {isExpanded ? "RESTORE EDITOR" : "EXPAND EDITOR"}
+              {isExpanded ? t("RESTORE EDITOR") : t("EXPAND EDITOR")}
             </button>
             <a
               href={obsStudioUrl}
@@ -562,7 +571,7 @@ export const StudioTab: React.FC<StudioTabProps> = ({
               className="btn btn-secondary"
               style={{ padding: "6px 12px", fontSize: "11px", textDecoration: "none" }}
             >
-              ↗ OPEN OBS VIEW
+              {t("↗ OPEN OBS VIEW")}
             </a>
             <button
               type="button"
@@ -570,7 +579,7 @@ export const StudioTab: React.FC<StudioTabProps> = ({
               style={{ padding: "6px 14px", fontSize: "11px" }}
               onClick={handleCopyObsUrl}
             >
-              {copied ? "✓ COPIED URL" : "COPY OBS STUDIO URL"}
+              {copied ? t("✓ COPIED URL") : t("COPY OBS STUDIO URL")}
             </button>
           </div>
         </div>
@@ -583,33 +592,33 @@ export const StudioTab: React.FC<StudioTabProps> = ({
           }}
         >
           <label className="mono-font" style={{ fontSize: "11px" }}>
-            PROFILE:{" "}
+            {t("PROFILE:")}{" "}
             <select
               className="raw-input"
               value={profileToLoad}
               disabled={busy}
               onChange={(event) => setProfileToLoad(event.target.value)}
             >
-              <option value="">MASTER STUDIO</option>
+              <option value="">{t("MASTER STUDIO")}</option>
               {profiles.map((profile) => <option key={profile.id} value={profile.id}>{profile.name}</option>)}
             </select>
           </label>
           <button type="button" className="btn btn-secondary" disabled={busy} onClick={() => void changeProfile(profileToLoad)}>
-            LOAD PROFILE
+            {t("LOAD PROFILE")}
           </button>
           <input
             className="raw-input"
-            aria-label="New profile name"
-            placeholder="New profile name"
+            aria-label={t("New profile name")}
+            placeholder={t("New profile name")}
             value={profileName}
             maxLength={100}
             disabled={busy}
             onChange={(event) => setProfileName(event.target.value)}
           />
           <button type="submit" className="btn btn-secondary" disabled={busy || !profileName.trim()}>
-            SAVE AS NEW PROFILE
+            {t("SAVE AS NEW PROFILE")}
           </button>
-          {error && dirtyRef.current && <button type="button" className="btn btn-secondary" disabled={busy} onClick={() => void saveImmediate(sceneRef.current)}>RETRY SAVE</button>}
+          {error && dirtyRef.current && <button type="button" className="btn btn-secondary" disabled={busy} onClick={() => void saveImmediate(sceneRef.current)}>{t("RETRY SAVE")}</button>}
         </form>
         {(error || profilesError) && (
           <p role="alert" className="mono-font" style={{ color: "var(--status-error)", fontSize: "12px", marginTop: "10px" }}>
@@ -619,37 +628,37 @@ export const StudioTab: React.FC<StudioTabProps> = ({
 
         <div className="obs-url-box" style={{ marginTop: "8px" }}>
           <span className="obs-url-text">
-            OBS Browser Source ({scene.width}×{scene.height}): {obsStudioUrl}
+            {t("OBS Browser Source ({w}×{h}):", { w: scene.width, h: scene.height })} {obsStudioUrl}
           </span>
           <button
             type="button"
             className={`copy-obs-btn ${copied ? "copied" : ""}`}
             onClick={handleCopyObsUrl}
           >
-            {copied ? "✓ COPIED" : "COPY URL"}
+            {copied ? t("✓ COPIED") : t("COPY URL")}
           </button>
         </div>
 
-        <section aria-label="Profile link tools" style={{ marginTop: "12px" }}>
-          <h3 style={{ fontSize: "13px", marginBottom: "8px" }}>PROFILE LINK TOOLS</h3>
+        <section aria-label={t("PROFILE LINK TOOLS")} style={{ marginTop: "12px" }}>
+          <h3 style={{ fontSize: "13px", marginBottom: "8px" }}>{t("PROFILE LINK TOOLS")}</h3>
           <form onSubmit={loadProfileUrl} style={{ display: "flex", gap: "8px", flexWrap: "wrap" }}>
             <input
               className="raw-input"
-              aria-label="Studio profile URL"
-              placeholder="Paste Studio or OBS link with ?profile=..."
+              aria-label={t("PROFILE LINK TOOLS")}
+              placeholder={t("Paste Studio or OBS link with ?profile=...")}
               value={profileUrl}
               onChange={(event) => setProfileUrl(event.target.value)}
               style={{ flex: "1 1 240px", minWidth: 0 }}
               disabled={busy}
               required
             />
-            <button type="submit" className="btn btn-secondary" disabled={busy || !profileUrl.trim()}>LOAD FROM URL</button>
+            <button type="submit" className="btn btn-secondary" disabled={busy || !profileUrl.trim()}>{t("LOAD FROM URL")}</button>
             <button type="button" className="btn btn-secondary" onClick={async () => {
               try { await navigator.clipboard.writeText(editorStudioUrl.href); }
-              catch { prompt("Copy Studio editor URL:", editorStudioUrl.href); }
-            }}>COPY EDITOR LINK</button>
+              catch { prompt(t("Copy Studio editor URL:"), editorStudioUrl.href); }
+            }}>{t("COPY EDITOR LINK")}</button>
           </form>
-          <p className="mono-font" style={{ fontSize: "11px", marginTop: "6px" }}>Loads a saved profile from this server; does not import remote layouts.</p>
+          <p className="mono-font" style={{ fontSize: "11px", marginTop: "6px" }}>{t("Loads a saved profile from this server; does not import remote layouts.")}</p>
         </section>
 
         {/* Canvas Resolution & Grid Controls */}
@@ -664,7 +673,7 @@ export const StudioTab: React.FC<StudioTabProps> = ({
                   className={`filter-btn ${active ? "active" : ""}`}
                   onClick={() => void saveImmediate({ ...scene, width: p.width, height: p.height })}
                 >
-                  {p.label}
+                  {t(p.label)}
                 </button>
               );
             })}
@@ -672,7 +681,7 @@ export const StudioTab: React.FC<StudioTabProps> = ({
 
           <div style={{ display: "flex", gap: "8px", alignItems: "center", marginLeft: "auto", flexWrap: "wrap" }}>
             <label className="mono-font" style={{ fontSize: "11px", display: "flex", alignItems: "center", gap: "4px" }}>
-              W:
+              {t("W:")}
               <input
                 type="number"
                 className="raw-input"
@@ -684,7 +693,7 @@ export const StudioTab: React.FC<StudioTabProps> = ({
               />
             </label>
             <label className="mono-font" style={{ fontSize: "11px", display: "flex", alignItems: "center", gap: "4px" }}>
-              H:
+              {t("H:")}
               <input
                 type="number"
                 className="raw-input"
@@ -700,7 +709,7 @@ export const StudioTab: React.FC<StudioTabProps> = ({
               className={`filter-btn ${snapGrid ? "active" : ""}`}
               onClick={() => setSnapGrid((v) => !v)}
             >
-              GRID SNAP: {snapGrid ? "ON (10PX)" : "OFF"}
+              {snapGrid ? t("GRID SNAP: ON (10PX)") : t("GRID SNAP: OFF")}
             </button>
             <button
               type="button"
@@ -708,11 +717,11 @@ export const StudioTab: React.FC<StudioTabProps> = ({
               aria-pressed={showTikTokGuides}
               onClick={() => setShowTikTokGuides((visible) => !visible)}
             >
-              TIKTOK LIVE DANGER ZONES: {showTikTokGuides ? "ON" : "OFF"}
+              {showTikTokGuides ? t("TIKTOK LIVE DANGER ZONES: ON") : t("TIKTOK LIVE DANGER ZONES: OFF")}
             </button>
           </div>
         </div>
-        {showTikTokGuides && <p className="mono-font" style={{ fontSize: "11px", marginTop: "8px", color: "var(--status-warning)" }}>Approximate TikTok LIVE UI areas; device and LIVE layout vary. Editor only — check on your phone before going live.</p>}
+        {showTikTokGuides && <p className="mono-font" style={{ fontSize: "11px", marginTop: "8px", color: "var(--status-warning)" }}>{t("Approximate TikTok LIVE UI areas; device and LIVE layout vary. Editor only — check on your phone before going live.")}</p>}
       </section>
 
       {/* Main Studio Workspace */}
@@ -721,10 +730,10 @@ export const StudioTab: React.FC<StudioTabProps> = ({
         <div className="raw-card studio-stage-panel" ref={stageWrapRef} onClick={() => setSelectedId(null)}>
           <div style={{ display: "flex", flexWrap: "wrap", gap: "8px", justifyContent: "space-between", marginBottom: "10px", alignItems: "center" }}>
             <span className="mono-font" style={{ fontSize: "11px", color: "var(--ctp-subtext0)" }}>
-              STAGE: {scene.width}×{scene.height}PX ({Math.round(previewScale * 100)}% ZOOM) — DRAG TO MOVE, CORNER TO RESIZE
+              {t("STAGE: {w}×{h}PX ({zoom}% ZOOM) — DRAG TO MOVE, CORNER TO RESIZE", { w: scene.width, h: scene.height, zoom: Math.round(previewScale * 100) })}
             </span>
             <span className="mono-font" style={{ fontSize: "11px", color: "var(--accent-primary)" }}>
-              {scene.layers.length} LAYER{scene.layers.length === 1 ? "" : "S"}
+              {scene.layers.length === 1 ? t("{n} LAYER", { n: 1 }) : t("{n} LAYERS", { n: scene.layers.length })}
             </span>
             <button
               type="button"
@@ -736,7 +745,7 @@ export const StudioTab: React.FC<StudioTabProps> = ({
                 setPreviewExpanded(!previewExpanded);
               }}
             >
-              {previewExpanded ? "RESTORE PREVIEW" : "EXPAND PREVIEW"}
+              {previewExpanded ? t("RESTORE PREVIEW") : t("EXPAND PREVIEW")}
             </button>
           </div>
 
@@ -758,7 +767,7 @@ export const StudioTab: React.FC<StudioTabProps> = ({
             >
               {scene.layers.length === 0 && (
                 <div className="studio-empty-hint">
-                  [ EMPTY SCENE — ADD WIDGETS BELOW TO MERGE ONTO YOUR OBS SCREEN ]
+                  {t("[ EMPTY SCENE — ADD WIDGETS BELOW TO MERGE ONTO YOUR OBS SCREEN ]")}
                 </div>
               )}
 
@@ -806,7 +815,7 @@ export const StudioTab: React.FC<StudioTabProps> = ({
                       <div
                         className="studio-resize-handle"
                         onPointerDown={(e) => startDrag(e, layer, "resize")}
-                        title="Drag to resize layer"
+                        title={t("Drag to resize layer")}
                       />
                     )}
                   </div>
@@ -815,10 +824,10 @@ export const StudioTab: React.FC<StudioTabProps> = ({
               {showTikTokGuides && (
                 <div className="studio-tiktok-guides" aria-label="TikTok LIVE danger zone guides">
                   {/* shortcut: approximate LIVE UI proportions; calibrate against device screenshots when exact placement is required. */}
-                  <div className="studio-tiktok-zone" style={{ top: 0, left: 0, width: "100%", height: "12%" }}>HEADER / LIVE INFO</div>
-                  <div className="studio-tiktok-zone" style={{ top: "12%", right: 0, width: "18%", height: "70%" }}>LIVE CONTROLS</div>
-                  <div className="studio-tiktok-zone" style={{ bottom: "10%", left: 0, width: "82%", height: "30%" }}>CHAT / GIFTS</div>
-                  <div className="studio-tiktok-zone" style={{ bottom: 0, left: 0, width: "100%", height: "10%" }}>COMMENT / BOTTOM BAR</div>
+                  <div className="studio-tiktok-zone" style={{ top: 0, left: 0, width: "100%", height: "12%" }}>{t("HEADER / LIVE INFO")}</div>
+                  <div className="studio-tiktok-zone" style={{ top: "12%", right: 0, width: "18%", height: "70%" }}>{t("LIVE CONTROLS")}</div>
+                  <div className="studio-tiktok-zone" style={{ bottom: "10%", left: 0, width: "82%", height: "30%" }}>{t("CHAT / GIFTS")}</div>
+                  <div className="studio-tiktok-zone" style={{ bottom: 0, left: 0, width: "100%", height: "10%" }}>{t("COMMENT / BOTTOM BAR")}</div>
                 </div>
               )}
             </div>
@@ -828,7 +837,7 @@ export const StudioTab: React.FC<StudioTabProps> = ({
         {/* Right Sidebar: Add Widgets, Layer Stack, Inspector */}
         <div className="studio-side-panel">
           <section className="raw-card" aria-label="External overlay tools" style={{ padding: "14px" }}>
-            <h3 style={{ fontSize: "13px", marginBottom: "10px" }}>+ EXTERNAL OVERLAY URL</h3>
+            <h3 style={{ fontSize: "13px", marginBottom: "10px" }}>{t("+ EXTERNAL OVERLAY URL")}</h3>
             <form onSubmit={handleAddExternalLayer} noValidate style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
               <input
                 type="url"
@@ -844,15 +853,15 @@ export const StudioTab: React.FC<StudioTabProps> = ({
               />
               <input
                 className="raw-input"
-                aria-label="External overlay name (optional)"
-                placeholder="Layer name (optional)"
+                aria-label={t("Layer name (optional)")}
+                placeholder={t("Layer name (optional)")}
                 value={externalName}
                 maxLength={100}
                 disabled={busy}
                 onChange={(event) => setExternalName(event.target.value)}
               />
               <button type="submit" className="btn btn-primary" disabled={busy || !externalUrl.trim()}>
-                + ADD EXTERNAL OVERLAY
+                {t("+ ADD EXTERNAL OVERLAY")}
               </button>
             </form>
             {externalError && (
@@ -861,26 +870,26 @@ export const StudioTab: React.FC<StudioTabProps> = ({
               </p>
             )}
             <p id="studio-external-help" className="mono-font" style={{ fontSize: "11px", color: "var(--ctp-subtext0)", marginTop: "8px" }}>
-              Use a trusted HTTP(S) overlay URL without credentials. Query parameters are kept. Some sites block iframe embedding; HTTPS pages may block HTTP embeds. Pop-ups and top navigation are disabled.
+              {t("Use a trusted HTTP(S) overlay URL without credentials. Query parameters are kept. Some sites block iframe embedding; HTTPS pages may block HTTP embeds. Pop-ups and top navigation are disabled.")}
             </p>
           </section>
 
           {/* Add Installed Overlays */}
           <section className="raw-card" style={{ padding: "14px" }}>
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "10px" }}>
-              <h3 style={{ fontSize: "13px" }}>+ ADD OVERLAY TO SCENE</h3>
+              <h3 style={{ fontSize: "13px" }}>{t("+ ADD OVERLAY TO SCENE")}</h3>
               <button
                 type="button"
                 className="btn btn-secondary"
                 style={{ padding: "2px 8px", fontSize: "10px" }}
                 onClick={onGoToMarket}
               >
-                MARKET
+                {t("MARKET")}
               </button>
             </div>
             {installedOverlays.length === 0 ? (
               <p className="mono-font" style={{ fontSize: "11px", color: "var(--ctp-subtext0)" }}>
-                No overlays installed yet. Install widgets from Overlays Market.
+                {t("No overlays installed yet. Install widgets from Overlays Market.")}
               </p>
             ) : (
               <div className="studio-palette-list">
@@ -900,7 +909,7 @@ export const StudioTab: React.FC<StudioTabProps> = ({
                       style={{ padding: "4px 10px", fontSize: "10px" }}
                       onClick={() => handleAddLayer(ov)}
                     >
-                      + ADD
+                      {t("+ ADD")}
                     </button>
                   </div>
                 ))}
@@ -911,7 +920,7 @@ export const StudioTab: React.FC<StudioTabProps> = ({
           {/* Layer Stack (Z-Order) */}
           <section className="raw-card" style={{ padding: "14px" }}>
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "10px" }}>
-              <h3 style={{ fontSize: "13px" }}>LAYERS (TOP TO BOTTOM)</h3>
+              <h3 style={{ fontSize: "13px" }}>{t("LAYERS (TOP TO BOTTOM)")}</h3>
               {scene.layers.length > 0 && (
                 <button
                   type="button"
@@ -922,14 +931,14 @@ export const StudioTab: React.FC<StudioTabProps> = ({
                     void saveImmediate({ ...scene, layers: [] });
                   }}
                 >
-                  CLEAR ALL
+                  {t("CLEAR ALL")}
                 </button>
               )}
             </div>
 
             {sortedLayers.length === 0 ? (
               <p className="mono-font" style={{ fontSize: "11px", color: "var(--ctp-subtext0)" }}>
-                No layers in scene.
+                {t("No layers in scene.")}
               </p>
             ) : (
               <div className="studio-layer-list">
@@ -963,7 +972,7 @@ export const StudioTab: React.FC<StudioTabProps> = ({
                           type="button"
                           className="studio-icon-btn"
                           disabled={i === 0}
-                          title="Bring Forward"
+                          title={t("Bring Forward")}
                           onClick={() => handleShiftZ(layer.id, "up")}
                         >
                           ↑
@@ -972,7 +981,7 @@ export const StudioTab: React.FC<StudioTabProps> = ({
                           type="button"
                           className="studio-icon-btn"
                           disabled={i === sortedLayers.length - 1}
-                          title="Send Backward"
+                          title={t("Send Backward")}
                           onClick={() => handleShiftZ(layer.id, "down")}
                         >
                           ↓
@@ -980,7 +989,7 @@ export const StudioTab: React.FC<StudioTabProps> = ({
                         <button
                           type="button"
                           className="studio-icon-btn"
-                          title={layer.visible ? "Hide Layer" : "Show Layer"}
+                          title={layer.visible ? t("Hide Layer") : t("Show Layer")}
                           onClick={() => updateLayer(layer.id, { visible: !layer.visible })}
                         >
                           {layer.visible ? "👁" : "🚫"}
@@ -988,7 +997,7 @@ export const StudioTab: React.FC<StudioTabProps> = ({
                         <button
                           type="button"
                           className="studio-icon-btn"
-                          title={layer.locked ? "Unlock Layer" : "Lock Position"}
+                          title={layer.locked ? t("Unlock Layer") : t("Lock Position")}
                           onClick={() => updateLayer(layer.id, { locked: !layer.locked })}
                         >
                           {layer.locked ? "🔒" : "🔓"}
@@ -996,7 +1005,7 @@ export const StudioTab: React.FC<StudioTabProps> = ({
                         <button
                           type="button"
                           className="studio-icon-btn danger"
-                          title="Remove Layer"
+                          title={t("Remove Layer")}
                           onClick={() => handleRemoveLayer(layer.id)}
                         >
                           ✕
@@ -1013,7 +1022,7 @@ export const StudioTab: React.FC<StudioTabProps> = ({
           {selectedLayer && (
             <section className="raw-card" style={{ padding: "14px" }}>
               <h3 style={{ fontSize: "13px", marginBottom: "10px" }}>
-                INSPECTOR: {selectedLayer.name}
+                {t("INSPECTOR: {name}", { name: selectedLayer.name })}
               </h3>
 
               <div className="studio-inspector-grid">
@@ -1038,7 +1047,7 @@ export const StudioTab: React.FC<StudioTabProps> = ({
                   />
                 </label>
                 <label>
-                  <span>WIDTH (PX)</span>
+                  <span>{t("WIDTH (PX)")}</span>
                   <input
                     type="number"
                     className="raw-input"
@@ -1049,7 +1058,7 @@ export const StudioTab: React.FC<StudioTabProps> = ({
                   />
                 </label>
                 <label>
-                  <span>HEIGHT (PX)</span>
+                  <span>{t("HEIGHT (PX)")}</span>
                   <input
                     type="number"
                     className="raw-input"
@@ -1060,7 +1069,7 @@ export const StudioTab: React.FC<StudioTabProps> = ({
                   />
                 </label>
                 <label>
-                  <span>SCALE ({selectedLayer.scale.toFixed(2)}x)</span>
+                  <span>{t("SCALE ({s}x)", { s: selectedLayer.scale.toFixed(2) })}</span>
                   <input
                     type="range"
                     min="0.25"
@@ -1072,7 +1081,7 @@ export const StudioTab: React.FC<StudioTabProps> = ({
                   />
                 </label>
                 <label>
-                  <span>OPACITY ({Math.round(selectedLayer.opacity * 100)}%)</span>
+                  <span>{t("OPACITY ({o}%)", { o: Math.round(selectedLayer.opacity * 100) })}</span>
                   <input
                     type="range"
                     min="0.1"
@@ -1086,23 +1095,23 @@ export const StudioTab: React.FC<StudioTabProps> = ({
 
               <div style={{ marginTop: "10px" }}>
                 <span className="mono-font" style={{ fontSize: "10px", color: "var(--ctp-subtext0)", display: "block", marginBottom: "6px" }}>
-                  QUICK SNAP ALIGN
+                  {t("QUICK SNAP ALIGN")}
                 </span>
                 <div style={{ display: "flex", gap: "4px", flexWrap: "wrap" }}>
                   <button type="button" className="filter-btn" disabled={selectedLayer.locked} onClick={() => alignSelected("tl")}>
-                    ↖ TOP-L
+                    {t("↖ TOP-L")}
                   </button>
                   <button type="button" className="filter-btn" disabled={selectedLayer.locked} onClick={() => alignSelected("tr")}>
-                    ↗ TOP-R
+                    {t("↗ TOP-R")}
                   </button>
                   <button type="button" className="filter-btn" disabled={selectedLayer.locked} onClick={() => alignSelected("center")}>
-                    ⊕ CENTER
+                    {t("⊕ CENTER")}
                   </button>
                   <button type="button" className="filter-btn" disabled={selectedLayer.locked} onClick={() => alignSelected("bl")}>
-                    ↙ BOT-L
+                    {t("↙ BOT-L")}
                   </button>
                   <button type="button" className="filter-btn" disabled={selectedLayer.locked} onClick={() => alignSelected("br")}>
-                    ↘ BOT-R
+                    {t("↘ BOT-R")}
                   </button>
                 </div>
               </div>

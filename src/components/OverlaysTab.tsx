@@ -1,5 +1,6 @@
 import React, { useState, useMemo } from "react";
 import { OverlayMarketItem, OverlayMeta } from "../types";
+import { useLang } from "../i18n.tsx";
 
 function detectOS(): "mac" | "windows" | "linux" {
   if (typeof window === "undefined" || !navigator) return "mac";
@@ -79,8 +80,9 @@ export const OverlaysTab: React.FC<OverlaysTabProps> = ({
   const [installingId, setInstallingId] = useState<string | null>(null);
   const [openingFolder, setOpeningFolder] = useState<string | null>(null);
 
+  const { t } = useLang();
   const os = useMemo(() => detectOS(), []);
-  const osFolderLabel = os === "mac" ? "FINDER" : os === "windows" ? "EXPLORER" : "FOLDER";
+  const osFolderLabel = os === "mac" ? t("FINDER") : os === "windows" ? t("EXPLORER") : t("FOLDER");
 
   async function handleOpenFolder(id?: string) {
     const key = id || "root";
@@ -167,9 +169,9 @@ export const OverlaysTab: React.FC<OverlaysTabProps> = ({
       if (data.success) {
         const methodMsg =
           data.method === "git_clone"
-            ? "Cloned via Git (shallow clone)"
-            : "Downloaded & extracted via ZIP archive";
-        setGitPullSuccess(`Installed "${data.overlay?.name || "overlay"}" successfully! (${methodMsg})`);
+            ? t("Cloned via Git (shallow clone)")
+            : t("Downloaded & extracted via ZIP archive");
+        setGitPullSuccess(t('Installed "{name}" successfully! ({method})', { name: data.overlay?.name || "overlay", method: methodMsg }));
         setGitUrl("");
         setGitOverlayId("");
         setIdManuallyEdited(false);
@@ -179,10 +181,10 @@ export const OverlaysTab: React.FC<OverlaysTabProps> = ({
           setGitPullSuccess(null);
         }, 1500);
       } else {
-        setGitPullError(data.error || "Failed to pull overlay");
+        setGitPullError(data.error || t("Failed to pull overlay"));
       }
     } catch (err: any) {
-      setGitPullError(`Network error: ${err.message}`);
+      setGitPullError(t("Network error: {err}", { err: err.message }));
     } finally {
       setPullingGit(false);
     }
@@ -221,7 +223,7 @@ export const OverlaysTab: React.FC<OverlaysTabProps> = ({
       setCopiedId(id);
       setTimeout(() => setCopiedId(null), 2000);
     } catch {
-      prompt("Copy OBS Browser Source URL:", url);
+      prompt(t("Copy OBS Browser Source URL:"), url);
     }
   }
 
@@ -262,9 +264,9 @@ export const OverlaysTab: React.FC<OverlaysTabProps> = ({
       <section className="raw-card elevated">
         <div className="card-title">
           <div>
-            <h2>STREAM OVERLAYS &amp; MARKETPLACE</h2>
+            <h2>{t("STREAM OVERLAYS & MARKETPLACE")}</h2>
             <span className="mono-font" style={{ fontSize: "12px", color: "var(--ctp-subtext0)" }}>
-              OBS / STREAMLABS BROWSER SOURCES
+              {t("OBS / STREAMLABS BROWSER SOURCES")}
             </span>
           </div>
           <div style={{ display: "flex", gap: "8px", flexWrap: "wrap" }}>
@@ -275,7 +277,7 @@ export const OverlaysTab: React.FC<OverlaysTabProps> = ({
                 style={{ padding: "4px 12px", fontSize: "11px" }}
                 onClick={onOpenStudio}
               >
-                🎛 OPEN STUDIO COMPOSER
+                {t("🎛 OPEN STUDIO COMPOSER")}
               </button>
             )}
             <button
@@ -284,9 +286,9 @@ export const OverlaysTab: React.FC<OverlaysTabProps> = ({
               style={{ padding: "4px 10px", fontSize: "11px" }}
               onClick={() => handleOpenFolder()}
               disabled={openingFolder === "root"}
-              title={`Open overlays folder in ${os === "mac" ? "macOS Finder" : os === "windows" ? "Windows File Explorer" : "Linux File Manager"}`}
+              title={t("OPEN IN {os}", { os: osFolderLabel })}
             >
-              📁 {openingFolder === "root" ? "OPENING..." : `OPEN IN ${osFolderLabel}`}
+              📁 {openingFolder === "root" ? t("OPENING...") : t("OPEN IN {os}", { os: osFolderLabel })}
             </button>
             <button
               type="button"
@@ -297,9 +299,9 @@ export const OverlaysTab: React.FC<OverlaysTabProps> = ({
                 setIdManuallyEdited(false);
                 checkGitStatus();
               }}
-              title="Pull or clone an overlay from a Git repository or zip archive"
+              title={t("Pull or clone an overlay from a Git repository or zip archive")}
             >
-              📥 PULL FROM GIT
+              {t("📥 PULL FROM GIT")}
             </button>
             <button
               type="button"
@@ -308,7 +310,7 @@ export const OverlaysTab: React.FC<OverlaysTabProps> = ({
               onClick={onRefresh}
               disabled={loading}
             >
-              {loading ? "REFRESHING..." : "🔄 REFRESH"}
+              {loading ? t("REFRESHING...") : t("🔄 REFRESH")}
             </button>
             <button
               type="button"
@@ -316,17 +318,17 @@ export const OverlaysTab: React.FC<OverlaysTabProps> = ({
               style={{ padding: "4px 12px", fontSize: "11px" }}
               onClick={() => setShowCreateModal(true)}
             >
-              + NEW OVERLAY
+              {t("+ NEW OVERLAY")}
             </button>
           </div>
         </div>
 
         <p style={{ fontSize: "13px", color: "var(--ctp-subtext0)", lineHeight: "1.6" }}>
-          All overlays are statically served from your local desktop bridge at{" "}
+          {t("All overlays are statically served from your local desktop bridge at")}{" "}
           <code className="mono-font" style={{ color: "var(--accent-primary)", background: "var(--ctp-crust)", padding: "2px 6px" }}>
             http://127.0.0.1:3001/overlays/&lt;id&gt;/
           </code>
-          . Add any overlay as a <strong>Browser Source</strong> in OBS, set its width and height, and check <strong>Shutdown source when not visible</strong>. Overlays automatically receive live stream and music events via SSE.
+          . {t("Add any overlay as a")} <strong>{t("Browser Source")}</strong> {t("in OBS, set its width and height, and check")} <strong>{t("Shutdown source when not visible")}</strong>. {t("Overlays automatically receive live stream and music events via SSE.")}
         </p>
 
         {/* Filter Navigation */}
@@ -338,11 +340,11 @@ export const OverlaysTab: React.FC<OverlaysTabProps> = ({
               className={`filter-btn ${activeCategory === cat ? "active" : ""}`}
               onClick={() => setActiveCategory(cat)}
             >
-              {cat}
+              {t(cat)}
             </button>
           ))}
           <span className="mono-font" style={{ marginLeft: "auto", fontSize: "11px", color: "var(--ctp-subtext0)", alignSelf: "center" }}>
-            {filteredItems.length} ITEMS AVAILABLE
+            {t("{n} ITEMS AVAILABLE", { n: filteredItems.length })}
           </span>
         </div>
       </section>
@@ -359,13 +361,13 @@ export const OverlaysTab: React.FC<OverlaysTabProps> = ({
               <div className="overlay-card-header">
                 <div style={{ display: "flex", gap: "6px", alignItems: "center" }}>
                   <span className={`overlay-category-tag ${item.category}`}>
-                    {item.category.toUpperCase()}
+                    {t(item.category.toUpperCase())}
                   </span>
                   {item.isInstalled && (
-                    <span className="overlay-installed-badge">✓ INSTALLED</span>
+                    <span className="overlay-installed-badge">{t("✓ INSTALLED")}</span>
                   )}
                   {item.isCustom && (
-                    <span className="overlay-custom-badge">CUSTOM</span>
+                    <span className="overlay-custom-badge">{t("CUSTOM")}</span>
                   )}
                 </div>
                 <span className="overlay-dimensions">
@@ -395,9 +397,9 @@ export const OverlaysTab: React.FC<OverlaysTabProps> = ({
                     type="button"
                     className={`copy-obs-btn ${isCopied ? "copied" : ""}`}
                     onClick={() => handleCopyUrl(item.id)}
-                    title="Copy OBS Browser Source URL"
+                    title={t("Copy OBS Browser Source URL")}
                   >
-                    {isCopied ? "✓ COPIED" : "COPY URL"}
+                    {isCopied ? t("✓ COPIED") : t("COPY URL")}
                   </button>
                 </div>
               </div>
@@ -410,7 +412,7 @@ export const OverlaysTab: React.FC<OverlaysTabProps> = ({
                   style={{ flex: 1, padding: "6px 8px", fontSize: "11px" }}
                   onClick={() => setPreviewOverlay(item)}
                 >
-                  👁 LIVE PREVIEW
+                  {t("👁 LIVE PREVIEW")}
                 </button>
 
                 {item.isInstalled && (
@@ -420,9 +422,9 @@ export const OverlaysTab: React.FC<OverlaysTabProps> = ({
                     style={{ padding: "6px 10px", fontSize: "11px" }}
                     onClick={() => handleOpenFolder(item.id)}
                     disabled={openingFolder === item.id}
-                    title={`Open this overlay in ${os === "mac" ? "Finder" : os === "windows" ? "File Explorer" : "File Manager"}`}
+                    title={t("OPEN IN {os}", { os: osFolderLabel })}
                   >
-                    📁 {openingFolder === item.id ? "..." : "FOLDER"}
+                    📁 {openingFolder === item.id ? "..." : t("FOLDER")}
                   </button>
                 )}
 
@@ -434,7 +436,7 @@ export const OverlaysTab: React.FC<OverlaysTabProps> = ({
                     onClick={() => handleInstallClick(item.id)}
                     disabled={isInstalling}
                   >
-                    {isInstalling ? "SAVING..." : item.isInstalled ? "REINSTALL" : "INSTALL"}
+                    {isInstalling ? t("SAVING...") : item.isInstalled ? t("REINSTALL") : t("INSTALL")}
                   </button>
                 )}
 
@@ -444,9 +446,9 @@ export const OverlaysTab: React.FC<OverlaysTabProps> = ({
                     className="btn btn-destructive"
                     style={{ padding: "6px 10px", fontSize: "11px" }}
                     onClick={() => onDeleteOverlay(item.id)}
-                    title="Delete custom overlay"
+                    title={t("Delete custom overlay")}
                   >
-                    DELETE
+                    {t("DELETE")}
                   </button>
                 )}
               </div>
@@ -461,7 +463,7 @@ export const OverlaysTab: React.FC<OverlaysTabProps> = ({
           <div className="modal-content" onClick={(e) => e.stopPropagation()}>
             <div className="modal-header">
               <div>
-                <h3>LIVE PREVIEW: {previewOverlay.name}</h3>
+                <h3>{t("LIVE PREVIEW: {name}", { name: previewOverlay.name })}</h3>
                 <span className="mono-font" style={{ fontSize: "11px", color: "var(--ctp-subtext0)" }}>
                   {previewOverlay.width} × {previewOverlay.height} PX // OBS BROWSER SOURCE
                 </span>
@@ -472,7 +474,7 @@ export const OverlaysTab: React.FC<OverlaysTabProps> = ({
                 style={{ padding: "2px 8px", fontSize: "12px" }}
                 onClick={() => setPreviewOverlay(null)}
               >
-                ✕ CLOSE
+                {t("✕ CLOSE")}
               </button>
             </div>
 
@@ -504,7 +506,7 @@ export const OverlaysTab: React.FC<OverlaysTabProps> = ({
                   style={{ padding: "6px 14px", fontSize: "11px" }}
                   onClick={() => handleCopyUrl(previewOverlay.id)}
                 >
-                  {copiedId === previewOverlay.id ? "✓ COPIED" : "COPY OBS URL"}
+                  {copiedId === previewOverlay.id ? t("✓ COPIED") : t("COPY OBS URL")}
                 </button>
                 <a
                   href={`${apiBase}/overlays/${previewOverlay.id}/`}
@@ -513,14 +515,14 @@ export const OverlaysTab: React.FC<OverlaysTabProps> = ({
                   className="btn btn-secondary"
                   style={{ padding: "6px 14px", fontSize: "11px", textDecoration: "none" }}
                 >
-                  OPEN TAB ↗
+                  {t("OPEN TAB ↗")}
                 </a>
                 <button
                   type="button"
                   className="btn btn-secondary"
                   style={{ padding: "6px 14px", fontSize: "11px" }}
                   onClick={() => handleOpenFolder(previewOverlay.id)}
-                  title={`Open this overlay in ${os === "mac" ? "Finder" : os === "windows" ? "File Explorer" : "File Manager"}`}
+                  title={t("OPEN IN {os}", { os: osFolderLabel })}
                 >
                   📁 {osFolderLabel}
                 </button>
@@ -535,7 +537,7 @@ export const OverlaysTab: React.FC<OverlaysTabProps> = ({
         <div className="modal-backdrop" onClick={() => setShowCreateModal(false)}>
           <div className="modal-content small" onClick={(e) => e.stopPropagation()}>
             <div className="modal-header">
-              <h3>CREATE CUSTOM OVERLAY</h3>
+              <h3>{t("CREATE CUSTOM OVERLAY")}</h3>
               <button
                 type="button"
                 className="btn btn-secondary"
@@ -548,11 +550,11 @@ export const OverlaysTab: React.FC<OverlaysTabProps> = ({
 
             <form onSubmit={handleCreateSubmit} className="modal-body form-grid">
               <div className="form-group">
-                <label className="form-label">OVERLAY NAME</label>
+                <label className="form-label">{t("OVERLAY NAME")}</label>
                 <input
                   type="text"
                   className="raw-input"
-                  placeholder="e.g. Neon Song Bar"
+                  placeholder={t("e.g. Neon Song Bar")}
                   value={customName}
                   onChange={(e) => setCustomName(e.target.value)}
                   required
@@ -560,44 +562,44 @@ export const OverlaysTab: React.FC<OverlaysTabProps> = ({
               </div>
 
               <div className="form-group">
-                <label className="form-label">FOLDER ID (OPTIONAL)</label>
+                <label className="form-label">{t("FOLDER ID (OPTIONAL)")}</label>
                 <input
                   type="text"
                   className="raw-input"
-                  placeholder="e.g. neon-song-bar"
+                  placeholder={t("e.g. neon-song-bar")}
                   value={customId}
                   onChange={(e) => setCustomId(e.target.value)}
                 />
               </div>
 
               <div className="form-group">
-                <label className="form-label">DESCRIPTION</label>
+                <label className="form-label">{t("DESCRIPTION")}</label>
                 <input
                   type="text"
                   className="raw-input"
-                  placeholder="Short description of this stream overlay"
+                  placeholder={t("Short description of this stream overlay")}
                   value={customDesc}
                   onChange={(e) => setCustomDesc(e.target.value)}
                 />
               </div>
 
               <div className="form-group">
-                <label className="form-label">CATEGORY</label>
+                <label className="form-label">{t("CATEGORY")}</label>
                 <select
                   className="raw-input"
                   value={customCategory}
                   onChange={(e) => setCustomCategory(e.target.value as any)}
                 >
-                  <option value="spotify">SPOTIFY</option>
-                  <option value="tiktok">TIKTOK</option>
-                  <option value="combined">COMBINED</option>
-                  <option value="custom">CUSTOM</option>
+                  <option value="spotify">{t("SPOTIFY")}</option>
+                  <option value="tiktok">{t("TIKTOK")}</option>
+                  <option value="combined">{t("COMBINED")}</option>
+                  <option value="custom">{t("CUSTOM")}</option>
                 </select>
               </div>
 
               <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "12px" }}>
                 <div className="form-group">
-                  <label className="form-label">WIDTH (PX)</label>
+                  <label className="form-label">{t("WIDTH (PX)")}</label>
                   <input
                     type="number"
                     className="raw-input"
@@ -608,7 +610,7 @@ export const OverlaysTab: React.FC<OverlaysTabProps> = ({
                   />
                 </div>
                 <div className="form-group">
-                  <label className="form-label">HEIGHT (PX)</label>
+                  <label className="form-label">{t("HEIGHT (PX)")}</label>
                   <input
                     type="number"
                     className="raw-input"
@@ -626,14 +628,14 @@ export const OverlaysTab: React.FC<OverlaysTabProps> = ({
                   className="btn btn-primary"
                   disabled={creating || !customName.trim()}
                 >
-                  {creating ? "SCAFFOLDING..." : "CREATE OVERLAY"}
+                  {creating ? t("SCAFFOLDING...") : t("CREATE OVERLAY")}
                 </button>
                 <button
                   type="button"
                   className="btn btn-secondary"
                   onClick={() => setShowCreateModal(false)}
                 >
-                  CANCEL
+                  {t("CANCEL")}
                 </button>
               </div>
             </form>
@@ -647,7 +649,7 @@ export const OverlaysTab: React.FC<OverlaysTabProps> = ({
           <div className="modal-content small" onClick={(e) => e.stopPropagation()}>
             <div className="modal-header">
               <div style={{ display: "flex", alignItems: "center", gap: "8px", flexWrap: "wrap" }}>
-                <h3>PULL OVERLAY FROM GIT</h3>
+                <h3>{t("PULL OVERLAY FROM GIT")}</h3>
                 {systemHasGit !== null && (
                   <span
                     className="tag-chip"
@@ -658,7 +660,7 @@ export const OverlaysTab: React.FC<OverlaysTabProps> = ({
                       fontWeight: "bold",
                     }}
                   >
-                    {systemHasGit ? "⚡ GIT AVAILABLE (CLONE)" : "📦 NO GIT (ZIP EXTRACT)"}
+                    {systemHasGit ? t("⚡ GIT AVAILABLE (CLONE)") : t("📦 NO GIT (ZIP EXTRACT)")}
                   </span>
                 )}
               </div>
@@ -675,7 +677,7 @@ export const OverlaysTab: React.FC<OverlaysTabProps> = ({
 
             <form onSubmit={handlePullGitSubmit} className="modal-body form-grid">
               <p style={{ fontSize: "12px", color: "var(--ctp-subtext0)", lineHeight: "1.5" }}>
-                Enter a Git repository URL (GitHub, GitLab, etc.) or a direct zip URL. If Git is detected on your machine, it performs a fast shallow clone; if not, it automatically downloads and extracts the repository ZIP archive.
+                {t("Enter a Git repository URL (GitHub, GitLab, etc.) or a direct zip URL. If Git is detected on your machine, it performs a fast shallow clone; if not, it automatically downloads and extracts the repository ZIP archive.")}
               </p>
 
               {gitPullError && (
@@ -693,7 +695,7 @@ export const OverlaysTab: React.FC<OverlaysTabProps> = ({
               )}
 
               <div className="form-group">
-                <label className="form-label">REPOSITORY OR ZIP URL *</label>
+                <label className="form-label">{t("REPOSITORY OR ZIP URL *")}</label>
                 <input
                   type="text"
                   className="raw-input"
@@ -714,7 +716,7 @@ export const OverlaysTab: React.FC<OverlaysTabProps> = ({
 
               <div className="form-group">
                 <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "4px" }}>
-                  <label className="form-label" style={{ marginBottom: 0 }}>OVERLAY ID</label>
+                  <label className="form-label" style={{ marginBottom: 0 }}>{t("OVERLAY ID")}</label>
                   {idManuallyEdited && (
                     <button
                       type="button"
@@ -724,16 +726,16 @@ export const OverlaysTab: React.FC<OverlaysTabProps> = ({
                         setIdManuallyEdited(false);
                         setGitOverlayId(extractRepoName(gitUrl));
                       }}
-                      title="Reset to auto-generated ID from repository name"
+                      title={t("Reset to auto-generated ID from repository name")}
                     >
-                      ↺ AUTO FROM REPO
+                      {t("↺ AUTO FROM REPO")}
                     </button>
                   )}
                 </div>
                 <input
                   type="text"
                   className="raw-input"
-                  placeholder={extractRepoName(gitUrl) || "auto-detected from repo name"}
+                  placeholder={extractRepoName(gitUrl) || t("auto-detected from repo name")}
                   value={gitOverlayId}
                   onChange={(e) => {
                     setGitOverlayId(e.target.value);
@@ -742,7 +744,7 @@ export const OverlaysTab: React.FC<OverlaysTabProps> = ({
                   disabled={pullingGit}
                 />
                 <span className="form-helper">
-                  Folder name inside your overlays directory (auto-generated from repo name).
+                  {t("Folder name inside your overlays directory (auto-generated from repo name).")}
                 </span>
               </div>
 
@@ -754,9 +756,9 @@ export const OverlaysTab: React.FC<OverlaysTabProps> = ({
                 >
                   {pullingGit
                     ? systemHasGit
-                      ? "CLONING REPOSITORY..."
-                      : "DOWNLOADING & EXTRACTING ZIP..."
-                    : "📥 PULL & INSTALL"}
+                      ? t("CLONING REPOSITORY...")
+                      : t("DOWNLOADING & EXTRACTING ZIP...")
+                    : t("📥 PULL & INSTALL")}
                 </button>
                 <button
                   type="button"
@@ -764,7 +766,7 @@ export const OverlaysTab: React.FC<OverlaysTabProps> = ({
                   onClick={() => setShowGitModal(false)}
                   disabled={pullingGit}
                 >
-                  CANCEL
+                  {t("CANCEL")}
                 </button>
               </div>
             </form>
