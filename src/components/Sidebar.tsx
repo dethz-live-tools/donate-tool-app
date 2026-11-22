@@ -1,14 +1,17 @@
 import React, { useState } from "react";
-import { SpotifyInfo, SpotifyTrack } from "../types";
+import { ScreenShareStatus, SpotifyInfo, SpotifyTrack } from "../types";
 import { useLang, type Lang } from "../i18n.tsx";
 
+export type AppPage = "dashboard" | "config" | "overlays" | "studio" | "screen" | "about";
+
 interface SidebarProps {
-  currentPage: "dashboard" | "config" | "overlays" | "studio" | "about";
-  onSelectPage: (page: "dashboard" | "config" | "overlays" | "studio" | "about") => void;
+  currentPage: AppPage;
+  onSelectPage: (page: AppPage) => void;
   status: "disconnected" | "connecting" | "connected" | "error";
   roomId: string | null;
   spotify: SpotifyInfo;
   track: SpotifyTrack | null;
+  screenShare: ScreenShareStatus;
   backendOnline: boolean;
 }
 
@@ -19,6 +22,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
   roomId,
   spotify,
   track,
+  screenShare,
   backendOnline,
 }) => {
   const [collapsed, setCollapsed] = useState(false);
@@ -82,6 +86,16 @@ export const Sidebar: React.FC<SidebarProps> = ({
         >
           <span>[ {t("OVERLAY STUDIO")} ]</span>
           <span aria-hidden="true">S</span>
+        </button>
+        <button
+          type="button"
+          className={`sidebar-tab ${currentPage === "screen" ? "active" : ""}`}
+          onClick={() => onSelectPage("screen")}
+          aria-label="Screen Share"
+          title="Screen Share"
+        >
+          <span>[ {t("SCREEN SHARE")} ]</span>
+          <span aria-hidden="true">W</span>
         </button>
         <button
           type="button"
@@ -161,6 +175,31 @@ export const Sidebar: React.FC<SidebarProps> = ({
                 ? t("SPOTIFY: PLAYING")
                 : t("SPOTIFY: IDLE")
               : t("SPOTIFY: OFF")}
+          </span>
+        </div>
+
+        {/* Screen Share Status Chip */}
+        <div
+          className={`status-chip ${
+            screenShare.error
+              ? "error"
+              : screenShare.activeSession?.state === "connected"
+              ? "connected"
+              : screenShare.running
+              ? "connecting"
+              : "disconnected"
+          }`}
+          style={{ width: "100%", justifyContent: "flex-start" }}
+        >
+          <span className="status-dot"></span>
+          <span>
+            {screenShare.error
+              ? t("SCREEN: ERROR")
+              : screenShare.activeSession?.state === "connected"
+              ? t("SCREEN: LIVE")
+              : screenShare.running
+              ? t("SCREEN: WAITING")
+              : t("SCREEN: OFF")}
           </span>
         </div>
       </div>

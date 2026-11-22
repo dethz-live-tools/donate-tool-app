@@ -2,9 +2,10 @@ import http from "node:http";
 import process from "node:process";
 import { handleRoutes } from "./routes/index.ts";
 import { ensureOverlaysDir } from "./services/overlays.ts";
+import { startScreenShareServer } from "./services/screenShare.ts";
 import { startSpotifyPolling } from "./services/spotify.ts";
-import { spotifyState } from "./state.ts";
-import { PORT, sendJson } from "./utils.ts";
+import { initialConfig, spotifyState } from "./state.ts";
+import { getLanAddresses, HOST, isPrivateOrLanHost, PORT, sendJson } from "./utils.ts";
 
 process.on("uncaughtException", (err) => {
   console.error("[server] Uncaught exception:", err);
@@ -22,6 +23,13 @@ if (spotifyState.refreshToken && spotifyState.clientId && spotifyState.clientSec
   startSpotifyPolling();
 }
 
+// Auto-start WHIP screen share receiver if previously enabled in config.yaml
+if (initialConfig.screenShare?.enabled) {
+  startScreenShareServer(initialConfig.screenShare.port, false).catch((err) => {
+    console.error("[screen-share] Failed to auto-start WHIP receiver:", err);
+  });
+}
+
 export function isAllowedOrigin(origin?: string): boolean {
   if (!origin) return true; // Native desktop apps, curl, direct same-origin requests
   try {
@@ -29,9 +37,9 @@ export function isAllowedOrigin(origin?: string): boolean {
     const host = parsed.hostname.toLowerCase();
     // Allow Tauri webviews
     if (parsed.protocol === "tauri:" || host === "tauri.localhost") return true;
-    // Allow local loopback origins (Vite dev server, OBS Browser source, local tabs)
-    if (host === "localhost" || host === "127.0.0.1" || host === "::1" || host === "[::1]") return true;
-    return false;
+    if (parsed.protocol !== "http:" && parsed.protocol !== "https:") return false;
+    // Allow loopback and LAN/private origins (Vite dev/preview, OBS Browser source, LAN tabs)
+    return isPrivateOrLanHost(host);
   } catch {
     return false;
   }
@@ -92,6 +100,9 @@ server.on("error", (err: any) => {
   }
 });
 
-server.listen(PORT, "127.0.0.1", () => {
-  console.log(`TikTok Live Webhook Bridge running on http://127.0.0.1:${PORT}`);
+server.listen(PORT, HOST, () => {
+  console.log(`TikTok Live Webhook Bridge running on http://${HOST}:${PORT}`);
+  for (const ip of getLanAddresses()) {
+    console.log(`  LAN: http://${ip}:${PORT}`);
+  }
 });

@@ -26,6 +26,35 @@ export interface AppConfig {
     minimizedBoxes?: Record<string, boolean>;
   };
   studio?: StudioScene;
+  screenShare?: ScreenShareConfig;
+}
+
+export interface ScreenShareConfig {
+  enabled: boolean;
+  port: number;
+  token: string;
+}
+
+export interface ScreenShareSessionInfo {
+  id: string;
+  state: "negotiating" | "connected";
+  startedAt: number;
+  remoteAddress: string;
+  width?: number;
+  height?: number;
+  hasAudio?: boolean;
+}
+
+export interface ScreenShareStatus {
+  apiRevision?: number;
+  running: boolean;
+  port: number;
+  token: string;
+  lanUrls: string[];
+  obsUrl: string;
+  receiverCount: number;
+  activeSession: ScreenShareSessionInfo | null;
+  error: string | null;
 }
 
 export interface TikTokGiftPayload {

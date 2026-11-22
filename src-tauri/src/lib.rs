@@ -1,14 +1,151 @@
 #[cfg(any(windows, test))]
 use std::ffi::OsString;
-use std::io::Write;
+use std::io::{Read, Write};
+use std::net::{SocketAddr, TcpStream};
 use std::path::{Path, PathBuf};
-use std::process::Command;
+use std::process::{Child, Command};
+use std::sync::Mutex;
+use std::time::{Duration, Instant};
 #[cfg(windows)]
 use std::os::windows::process::CommandExt;
 use tauri::Manager;
 
 #[cfg(windows)]
 const CREATE_NO_WINDOW: u32 = 0x0800_0000;
+const BACKEND_PORT: u16 = 3001;
+const EXPECTED_SCREEN_SHARE_REVISION: &str = "\"apiRevision\":5";
+
+struct BackendProcess(Mutex<Option<Child>>);
+
+fn parse_http_status_code(response: &str) -> Option<u16> {
+    let first_line = response.lines().next()?;
+    let code = first_line.split_whitespace().nth(1)?;
+    code.parse::<u16>().ok()
+}
+
+fn is_current_screen_share_response(status: u16, body: &str) -> bool {
+    status == 200 && body.contains(EXPECTED_SCREEN_SHARE_REVISION)
+}
+
+fn is_known_backend_process(comm: &str) -> bool {
+    let trimmed = comm.trim().trim_matches('"');
+    let name = Path::new(trimmed)
+        .file_name()
+        .and_then(|s| s.to_str())
+        .unwrap_or(trimmed)
+        .to_ascii_lowercase();
+    matches!(
+        name.as_str(),
+        "donate-server" | "donate-server.exe" | "bun" | "bun.exe" | "node" | "node.exe"
+    )
+}
+
+fn http_get_response(port: u16, path: &str) -> Option<(u16, String)> {
+    let addr: SocketAddr = ([127, 0, 0, 1], port).into();
+    let mut stream = TcpStream::connect_timeout(&addr, Duration::from_millis(300)).ok()?;
+    let _ = stream.set_read_timeout(Some(Duration::from_millis(500)));
+    let _ = stream.set_write_timeout(Some(Duration::from_millis(500)));
+    let req = format!("GET {path} HTTP/1.1\r\nHost: 127.0.0.1:{port}\r\nConnection: close\r\n\r\n");
+    stream.write_all(req.as_bytes()).ok()?;
+    let mut buf = Vec::with_capacity(1024);
+    let _ = stream.take(4096).read_to_end(&mut buf);
+    let raw = String::from_utf8_lossy(&buf).into_owned();
+    let status = parse_http_status_code(&raw)?;
+    Some((status, raw))
+}
+
+fn is_backend_current(port: u16) -> bool {
+    match http_get_response(port, "/api/screen-share/status") {
+        Some((status, body)) => is_current_screen_share_response(status, &body),
+        None => false,
+    }
+}
+
+fn stop_outdated_backend_on_port(port: u16) {
+    let status_ok = matches!(http_get_response(port, "/api/status"), Some((200, _)));
+    if !status_ok || is_backend_current(port) {
+        return;
+    }
+
+    #[cfg(unix)]
+    {
+        if let Ok(output) = Command::new("lsof")
+            .args(["-nP", &format!("-iTCP:{port}"), "-sTCP:LISTEN", "-t"])
+            .output()
+        {
+            let self_pid = std::process::id();
+            for line in String::from_utf8_lossy(&output.stdout).lines() {
+                let Ok(pid) = line.trim().parse::<u32>() else { continue };
+                if pid == 0 || pid == self_pid {
+                    continue;
+                }
+                if let Ok(ps_out) = Command::new("ps")
+                    .args(["-o", "comm=", "-p", &pid.to_string()])
+                    .output()
+                {
+                    let comm = String::from_utf8_lossy(&ps_out.stdout);
+                    if is_known_backend_process(&comm) {
+                        let _ = Command::new("kill").args(["-TERM", &pid.to_string()]).status();
+                    }
+                }
+            }
+        }
+    }
+
+    #[cfg(windows)]
+    {
+        let mut netstat = Command::new("netstat");
+        netstat.args(["-ano", "-p", "tcp"]).creation_flags(CREATE_NO_WINDOW);
+        if let Ok(output) = netstat.output() {
+            let suffix = format!(":{port}");
+            let self_pid = std::process::id();
+            for line in String::from_utf8_lossy(&output.stdout).lines() {
+                let parts: Vec<&str> = line.split_whitespace().collect();
+                if parts.len() < 5 || parts[3] != "LISTENING" || !parts[1].ends_with(&suffix) {
+                    continue;
+                }
+                let Ok(pid) = parts[4].parse::<u32>() else { continue };
+                if pid == 0 || pid == self_pid {
+                    continue;
+                }
+                let mut tasklist = Command::new("tasklist");
+                tasklist
+                    .args(["/FI", &format!("PID eq {pid}"), "/FO", "CSV", "/NH"])
+                    .creation_flags(CREATE_NO_WINDOW);
+                if let Ok(tl_out) = tasklist.output() {
+                    let line = String::from_utf8_lossy(&tl_out.stdout);
+                    let image = line.split(',').next().unwrap_or("");
+                    if is_known_backend_process(image) {
+                        let mut kill = Command::new("taskkill");
+                        kill.args(["/PID", &pid.to_string(), "/T", "/F"])
+                            .creation_flags(CREATE_NO_WINDOW);
+                        let _ = kill.status();
+                    }
+                }
+            }
+        }
+    }
+
+    let deadline = Instant::now() + Duration::from_millis(2000);
+    let addr: SocketAddr = ([127, 0, 0, 1], port).into();
+    while Instant::now() < deadline {
+        if TcpStream::connect_timeout(&addr, Duration::from_millis(100)).is_err() {
+            break;
+        }
+        std::thread::sleep(Duration::from_millis(50));
+    }
+}
+
+fn stop_managed_server(app: &tauri::AppHandle) {
+    if let Some(state) = app.try_state::<BackendProcess>() {
+        if let Ok(mut guard) = state.0.lock() {
+            if let Some(mut child) = guard.take() {
+                let _ = child.kill();
+                let _ = child.wait();
+            }
+        }
+    }
+}
 
 #[cfg(any(windows, test))]
 fn windows_config_dir(appdata: Option<OsString>, roaming_data_dir: Option<PathBuf>) -> Result<PathBuf, String> {
@@ -62,7 +199,15 @@ fn migrate_legacy_config(legacy_dir: &Path, config_dir: &Path) -> Result<(), Str
 }
 
 fn spawn_server(app: &tauri::AppHandle) -> Result<(), String> {
-    if cfg!(debug_assertions) {
+    stop_managed_server(app);
+    stop_outdated_backend_on_port(BACKEND_PORT);
+
+    // If an up-to-date backend is already serving (e.g. started by `bun run dev`), reuse it
+    if is_backend_current(BACKEND_PORT) {
+        return Ok(());
+    }
+
+    let child = if cfg!(debug_assertions) {
         let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
             .parent()
             .ok_or("Missing project directory")?;
@@ -74,7 +219,7 @@ fn spawn_server(app: &tauri::AppHandle) -> Result<(), String> {
         #[cfg(windows)]
         cmd.creation_flags(CREATE_NO_WINDOW);
         cmd.spawn()
-            .map_err(|err| format!("Failed to start development backend: {err}"))?;
+            .map_err(|err| format!("Failed to start development backend: {err}"))?
     } else {
         let resources = app.path().resource_dir().map_err(|err| err.to_string())?;
         let data = app.path().app_data_dir().map_err(|err| err.to_string())?;
@@ -90,7 +235,13 @@ fn spawn_server(app: &tauri::AppHandle) -> Result<(), String> {
         #[cfg(windows)]
         cmd.creation_flags(CREATE_NO_WINDOW);
         cmd.spawn()
-            .map_err(|err| format!("Failed to start bundled backend: {err}"))?;
+            .map_err(|err| format!("Failed to start bundled backend: {err}"))?
+    };
+
+    if let Some(state) = app.try_state::<BackendProcess>() {
+        if let Ok(mut guard) = state.0.lock() {
+            *guard = Some(child);
+        }
     }
     Ok(())
 }
@@ -103,15 +254,22 @@ fn start_service(app: tauri::AppHandle) -> Result<String, String> {
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
-    tauri::Builder::default()
+    let app = tauri::Builder::default()
+        .manage(BackendProcess(Mutex::new(None)))
         .plugin(tauri_plugin_opener::init())
         .setup(|app| {
             spawn_server(app.handle()).map_err(std::io::Error::other)?;
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![start_service])
-        .run(tauri::generate_context!())
-        .expect("error while running tauri application");
+        .build(tauri::generate_context!())
+        .expect("error while building tauri application");
+
+    app.run(|app_handle, event| {
+        if let tauri::RunEvent::Exit = event {
+            stop_managed_server(app_handle);
+        }
+    });
 }
 
 #[cfg(test)]
@@ -178,5 +336,22 @@ mod tests {
         );
 
         std::fs::remove_dir_all(&root).unwrap();
+    }
+
+    #[test]
+    fn parses_http_status_codes_and_identifies_known_backends() {
+        assert_eq!(parse_http_status_code("HTTP/1.1 200 OK\r\nContent-Type: application/json\r\n"), Some(200));
+        assert_eq!(parse_http_status_code("HTTP/1.1 404 Not Found\r\n"), Some(404));
+        assert_eq!(parse_http_status_code("garbage"), None);
+        assert!(is_current_screen_share_response(200, r#"{"success":true,"status":{"apiRevision":5,"running":false}}"#));
+        assert!(!is_current_screen_share_response(200, r#"{"success":true,"status":{"running":false}}"#));
+        assert!(!is_current_screen_share_response(404, "Not Found"));
+
+        assert!(is_known_backend_process("/Applications/donate-socket.app/Contents/Resources/backend/donate-server"));
+        assert!(is_known_backend_process("\"donate-server.exe\""));
+        assert!(is_known_backend_process("/Users/dev/.bun/bin/bun"));
+        assert!(is_known_backend_process("node.exe"));
+        assert!(!is_known_backend_process("/usr/sbin/httpd"));
+        assert!(!is_known_backend_process("postgres"));
     }
 }

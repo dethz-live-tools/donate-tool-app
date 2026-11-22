@@ -3,8 +3,22 @@ import { randomUUID } from "node:crypto";
 import path from "node:path";
 import process from "node:process";
 import YAML from "yaml";
-import type { AppConfig, ChatRole, StudioLayer, StudioProfile, StudioScene } from "./types.ts";
-import { classifyBlockedHost, PORT } from "./utils.ts";
+import type { AppConfig, ChatRole, ScreenShareConfig, StudioLayer, StudioProfile, StudioScene } from "./types.ts";
+import { classifyBlockedHost, isSelfTargetHost, PORT } from "./utils.ts";
+
+export const DEFAULT_SCREEN_SHARE_PORT = 3002;
+
+export function normalizeScreenSharePort(raw: unknown): number {
+  const n = Math.trunc(Number(raw));
+  if (Number.isFinite(n) && n >= 1024 && n <= 65535 && n !== PORT) {
+    return n;
+  }
+  return DEFAULT_SCREEN_SHARE_PORT;
+}
+
+function defaultScreenShareConfig(): ScreenShareConfig {
+  return { enabled: false, port: DEFAULT_SCREEN_SHARE_PORT, token: "" };
+}
 
 const ALL_ROLES: ChatRole[] = ["owner", "moderator", "subscriber", "follower", "guest"];
 
@@ -28,7 +42,7 @@ export function isValidExternalLayerUrl(rawUrl: string): boolean {
     const blocked = classifyBlockedHost(parsed.hostname);
     if (blocked === "metadata") return false;
     const port = parsed.port ? Number(parsed.port) : (parsed.protocol === "https:" ? 443 : 80);
-    if (blocked === "loopback" && (port === 3001 || port === PORT)) return false;
+    if (isSelfTargetHost(parsed.hostname) && (port === 3001 || port === PORT)) return false;
     return true;
   } catch {
     return false;
@@ -151,6 +165,11 @@ function readConfig(throwOnError: boolean): AppConfig {
         },
         studio: normalizeStudioScene(parsed.studio),
         studioProfiles: normalizeStudioProfiles(parsed.studioProfiles),
+        screenShare: {
+          enabled: Boolean(parsed.screen_share?.enabled ?? false),
+          port: normalizeScreenSharePort(parsed.screen_share?.port),
+          token: String(parsed.screen_share?.token || "").trim(),
+        },
       };
     } else if (fs.existsSync(LEGACY_CONFIG_FILE)) {
       const raw = fs.readFileSync(LEGACY_CONFIG_FILE, "utf-8");
@@ -179,6 +198,7 @@ function readConfig(throwOnError: boolean): AppConfig {
         },
         studio: { ...DEFAULT_STUDIO_SCENE, layers: [] },
         studioProfiles: [],
+        screenShare: defaultScreenShareConfig(),
       };
       saveConfig(migrated);
       return migrated;
@@ -211,6 +231,7 @@ function readConfig(throwOnError: boolean): AppConfig {
     },
     studio: { ...DEFAULT_STUDIO_SCENE, layers: [] },
     studioProfiles: [],
+    screenShare: defaultScreenShareConfig(),
   };
 }
 
@@ -219,6 +240,14 @@ export function getPublicConfig(config: AppConfig): AppConfig {
     ...config,
     spotifyClientSecret: config.spotifyClientSecret ? "••••••••" : "",
     spotifyRefreshToken: config.spotifyRefreshToken ? "••••••••" : "",
+    ...(config.screenShare
+      ? {
+          screenShare: {
+            ...config.screenShare,
+            token: config.screenShare.token ? "••••••••" : "",
+          },
+        }
+      : {}),
   };
 }
 
@@ -299,6 +328,22 @@ export function saveConfig(updates: Partial<AppConfig>) {
         ? normalizeStudioScene(updates.studio)
         : normalizeStudioScene(existing.studio),
       studioProfiles: normalizeStudioProfiles(updates.studioProfiles ?? existing.studioProfiles),
+      screenShare: {
+        enabled:
+          updates.screenShare?.enabled !== undefined
+            ? Boolean(updates.screenShare.enabled)
+            : Boolean(existing.screenShare?.enabled ?? false),
+        port:
+          updates.screenShare?.port !== undefined
+            ? normalizeScreenSharePort(updates.screenShare.port)
+            : normalizeScreenSharePort(existing.screenShare?.port),
+        token:
+          updates.screenShare?.token !== undefined &&
+          updates.screenShare.token !== "••••••••" &&
+          updates.screenShare.token.trim() !== ""
+            ? updates.screenShare.token.trim()
+            : existing.screenShare?.token || "",
+      },
     };
 
     const yamlData = {
@@ -333,6 +378,11 @@ export function saveConfig(updates: Partial<AppConfig>) {
       },
       studio: merged.studio || DEFAULT_STUDIO_SCENE,
       studioProfiles: merged.studioProfiles,
+      screen_share: {
+        enabled: Boolean(merged.screenShare?.enabled),
+        port: normalizeScreenSharePort(merged.screenShare?.port),
+        token: merged.screenShare?.token || "",
+      },
     };
 
     const serialized = YAML.stringify(yamlData, { indent: 2 });

@@ -5,6 +5,7 @@ import {
   LogEntry,
   OverlayMarketItem,
   OverlayMeta,
+  ScreenShareStatus,
   ServerState,
   SongRequestItem,
   SpotifyDevice,
@@ -14,14 +15,16 @@ import {
   TikTokChatMessage,
 } from "./types";
 import { useLang } from "./i18n.tsx";
-import { Sidebar } from "./components/Sidebar";
+import { API_BASE } from "./lib/apiBase";
+import { ScreenShareClient } from "./lib/screenShareClient";
+import { type AppPage, Sidebar } from "./components/Sidebar";
 import { DashboardTab } from "./components/DashboardTab";
 import { ConfigTab } from "./components/ConfigTab";
 import { OverlaysTab } from "./components/OverlaysTab";
 import { StudioTab } from "./components/StudioTab";
+import { ScreenShareTab } from "./components/ScreenShareTab";
 import { AboutTab } from "./components/AboutTab";
 
-const API_BASE = "http://127.0.0.1:3001";
 const UPDATE_REPO = "dethz-live-tools/donate-tool-app";
 
 // Strip leading "v" and compare as numeric parts (0.1.10 > 0.1.9, non-numeric => 0)
@@ -48,9 +51,11 @@ async function openAuthorizeUrl(url: string) {
 
 export default function App() {
   const { t } = useLang();
-  const [currentPage, setCurrentPage] = useState<"dashboard" | "config" | "overlays" | "studio" | "about">(() => {
+  const [currentPage, setCurrentPage] = useState<AppPage>(() => {
     const query = new URLSearchParams(window.location.search);
-    return query.get("page") === "studio" || query.has("profile") ? "studio" : "dashboard";
+    if (query.get("page") === "studio" || query.has("profile")) return "studio";
+    if (query.get("page") === "screen") return "screen";
+    return "dashboard";
   });
 
   // TikTok & Webhook state
@@ -99,6 +104,21 @@ export default function App() {
     height: 1080,
     layers: [],
   });
+
+  // Screen Share (WHIP) state — kept at App level so switching tabs never drops the live WebRTC stream
+  const [screenShare, setScreenShare] = useState<ScreenShareStatus>({
+    running: false,
+    port: 3002,
+    token: "",
+    lanUrls: [],
+    obsUrl: `${API_BASE}/overlays/screen-share/`,
+    receiverCount: 0,
+    activeSession: null,
+    error: null,
+  });
+  const [screenShareStream, setScreenShareStream] = useState<MediaStream | null>(null);
+  const [screenShareBusy, setScreenShareBusy] = useState(false);
+  const screenShareClientRef = useRef<ScreenShareClient | null>(null);
 
   const eventSourceRef = useRef<EventSource | null>(null);
 
@@ -247,11 +267,51 @@ export default function App() {
 
   useEffect(() => {
     fetchOverlays();
+    fetchScreenShareStatus();
+  }, []);
+
+  useEffect(() => {
+    if (backendOnline) {
+      fetchScreenShareStatus();
+    }
+  }, [backendOnline]);
+
+  useEffect(() => {
+    if (!screenShare.running) {
+      if (screenShareClientRef.current) {
+        screenShareClientRef.current.stop();
+        screenShareClientRef.current = null;
+      }
+      setScreenShareStream(null);
+      return;
+    }
+
+    if (!screenShareClientRef.current) {
+      const client = new ScreenShareClient(API_BASE, {
+        onStatus: (nextStatus) => setScreenShare(nextStatus),
+        onStream: (nextStream) => setScreenShareStream(nextStream),
+        onError: (msg) => setErrorMsg(msg),
+      });
+      screenShareClientRef.current = client;
+      client.start();
+    }
+  }, [screenShare.running]);
+
+  useEffect(() => {
+    return () => {
+      if (screenShareClientRef.current) {
+        screenShareClientRef.current.stop();
+        screenShareClientRef.current = null;
+      }
+    };
   }, []);
 
   useEffect(() => {
     if (currentPage === "overlays" || currentPage === "studio") {
       fetchOverlays();
+    }
+    if (currentPage === "screen") {
+      fetchScreenShareStatus();
     }
   }, [currentPage]);
 
@@ -735,6 +795,87 @@ export default function App() {
     }
   }
 
+  async function fetchScreenShareStatus() {
+    try {
+      const res = await fetch(`${API_BASE}/api/screen-share/status`);
+      if (res.ok) {
+        const data = await res.json();
+        if (data?.status) setScreenShare(data.status);
+      }
+    } catch {}
+  }
+
+  async function handleStartScreenShare(port: number) {
+    setScreenShareBusy(true);
+    setErrorMsg(null);
+    try {
+      const res = await fetch(`${API_BASE}/api/screen-share/start`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ port }),
+      });
+      const data = await res.json();
+      if (res.status === 404) {
+        setErrorMsg(t("Outdated backend running on port 3001 — stop the old backend process and restart."));
+      } else if (data.success && data.status) {
+        setScreenShare(data.status);
+      } else {
+        setErrorMsg(data.error || t("Failed to start WHIP receiver"));
+      }
+    } catch (err: any) {
+      setErrorMsg(err?.message || t("Failed to start WHIP receiver"));
+    } finally {
+      setScreenShareBusy(false);
+    }
+  }
+
+  async function handleStopScreenShare() {
+    setScreenShareBusy(true);
+    try {
+      const res = await fetch(`${API_BASE}/api/screen-share/stop`, { method: "POST" });
+      const data = await res.json();
+      if (data.success && data.status) {
+        setScreenShare(data.status);
+        setScreenShareStream(null);
+      }
+    } catch (err: any) {
+      setErrorMsg(err?.message || t("Failed to stop WHIP receiver"));
+    } finally {
+      setScreenShareBusy(false);
+    }
+  }
+
+  async function handleRegenerateScreenShareToken() {
+    setScreenShareBusy(true);
+    try {
+      const res = await fetch(`${API_BASE}/api/screen-share/regenerate-token`, { method: "POST" });
+      const data = await res.json();
+      if (data.success && data.status) {
+        setScreenShare(data.status);
+      }
+    } catch (err: any) {
+      setErrorMsg(err?.message || t("Failed to regenerate token"));
+    } finally {
+      setScreenShareBusy(false);
+    }
+  }
+
+  async function handleDisconnectScreenShare() {
+    setScreenShareBusy(true);
+    try {
+      const res = await fetch(`${API_BASE}/api/screen-share/disconnect`, { method: "POST" });
+      const data = await res.json();
+      if (data.success && data.status) {
+        setScreenShare(data.status);
+        setScreenShareStream(null);
+      }
+    } catch (err: any) {
+      setErrorMsg(err?.message || t("Failed to disconnect stream"));
+    } finally {
+      setScreenShareBusy(false);
+    }
+  }
+
   return (
     <div className="app-layout">
       {/* Sidebar Navigation */}
@@ -745,6 +886,7 @@ export default function App() {
         roomId={roomId}
         spotify={spotify}
         track={spotify.currentTrack}
+        screenShare={screenShare}
         backendOnline={backendOnline}
       />
 
@@ -881,6 +1023,18 @@ export default function App() {
             studio={studioScene}
             onSaveStudio={handleSaveStudio}
             onGoToMarket={() => setCurrentPage("overlays")}
+          />
+        ) : currentPage === "screen" ? (
+          <ScreenShareTab
+            apiBase={API_BASE}
+            status={screenShare}
+            stream={screenShareStream}
+            busy={screenShareBusy}
+            onStart={handleStartScreenShare}
+            onStop={handleStopScreenShare}
+            onRegenerateToken={handleRegenerateScreenShareToken}
+            onDisconnectStream={handleDisconnectScreenShare}
+            onVideoDimensions={(w, h) => screenShareClientRef.current?.reportVideoDimensions(w, h)}
           />
         ) : (
           <OverlaysTab

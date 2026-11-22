@@ -144,32 +144,56 @@ function cleanText(text: string): string {
     .join("");
 }
 
+const MAX_TTS_TEXT_LENGTH = 1000;
+
+export function sanitizeVoice(voice?: string): string {
+  const trimmed = String(voice || "").trim();
+  return /^[a-zA-Z0-9-]{2,64}$/.test(trimmed) ? trimmed : DEFAULT_VOICE;
+}
+
 function formatRate(rate?: number | string): string {
-  if (typeof rate === "string" && (rate.endsWith("%") || rate === "default")) {
-    return rate;
+  if (typeof rate === "string") {
+    const trimmed = rate.trim();
+    if (trimmed === "default") return "default";
+    const m = trimmed.match(/^([+-]?\d{1,3})%$/);
+    if (m) {
+      const clamped = Math.max(-50, Math.min(200, Number(m[1])));
+      return `${clamped >= 0 ? "+" : ""}${clamped}%`;
+    }
+    if (!/^[+-]?\d+(?:\.\d+)?$/.test(trimmed)) return "+0%";
   }
-  const num = typeof rate === "number" ? rate : parseFloat(String(rate));
-  if (isNaN(num) || Math.abs(num - 1.0) < 0.05) return "+0%";
-  const pct = Math.round((num - 1.0) * 100);
+  const num = typeof rate === "number" ? rate : Number(rate);
+  if (!Number.isFinite(num) || Math.abs(num - 1.0) < 0.05) return "+0%";
+  const pct = Math.max(-50, Math.min(200, Math.round((num - 1.0) * 100)));
   return `${pct >= 0 ? "+" : ""}${pct}%`;
 }
 
 function formatPitch(pitch?: number | string): string {
-  if (typeof pitch === "string" && (pitch.endsWith("Hz") || pitch.endsWith("st"))) {
-    return pitch;
+  if (typeof pitch === "string") {
+    const trimmed = pitch.trim();
+    const m = trimmed.match(/^([+-]?\d{1,3})(Hz|st)$/i);
+    if (m) {
+      const unit = m[2].toLowerCase() === "st" ? "st" : "Hz";
+      const clamped = Math.max(-50, Math.min(100, Number(m[1])));
+      return `${clamped >= 0 ? "+" : ""}${clamped}${unit}`;
+    }
+    if (!/^[+-]?\d+(?:\.\d+)?$/.test(trimmed)) return "+0Hz";
   }
-  const num = typeof pitch === "number" ? pitch : parseFloat(String(pitch));
-  if (isNaN(num) || Math.abs(num - 1.0) < 0.05) return "+0Hz";
-  const hz = Math.round((num - 1.0) * 50);
+  const num = typeof pitch === "number" ? pitch : Number(pitch);
+  if (!Number.isFinite(num) || Math.abs(num - 1.0) < 0.05) return "+0Hz";
+  const hz = Math.max(-50, Math.min(100, Math.round((num - 1.0) * 50)));
   return `${hz >= 0 ? "+" : ""}${hz}Hz`;
 }
 
-function buildSSML(text: string, voice: string, rate: string, pitch: string): string {
+export function buildSSML(text: string, voice: string, rate: string, pitch: string): string {
+  const safeVoice = sanitizeVoice(voice);
+  const safeRate = formatRate(rate);
+  const safePitch = formatPitch(pitch);
   const cleaned = escapeXml(cleanText(text));
-  const lang = voice.toLowerCase().startsWith("th") ? "th-TH" : "en-US";
+  const lang = safeVoice.toLowerCase().startsWith("th") ? "th-TH" : "en-US";
   return `<speak version="1.0" xmlns="http://www.w3.org/2001/10/synthesis" xml:lang="${lang}">` +
-    `<voice name="${voice}">` +
-    `<prosody pitch="${pitch}" rate="${rate}" volume="+0%">` +
+    `<voice name="${escapeXml(safeVoice)}">` +
+    `<prosody pitch="${escapeXml(safePitch)}" rate="${escapeXml(safeRate)}" volume="+0%">` +
     cleaned +
     `</prosody></voice></speak>`;
 }
@@ -249,8 +273,11 @@ export async function synthesizeEdgeTTS(options: SynthesizeOptions): Promise<Buf
   if (!text) {
     throw new Error("Text is required for TTS synthesis");
   }
+  if (text.length > MAX_TTS_TEXT_LENGTH) {
+    throw new Error(`Text exceeds maximum ${MAX_TTS_TEXT_LENGTH} characters`);
+  }
 
-  const requestedVoice = options.voice || DEFAULT_VOICE;
+  const requestedVoice = sanitizeVoice(options.voice);
   const rateStr = formatRate(options.rate);
   const pitchStr = formatPitch(options.pitch);
 

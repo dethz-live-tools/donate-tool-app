@@ -25,7 +25,7 @@ function bridgePlugin(): Plugin {
           const bunPath = process.env.HOME ? `${process.env.HOME}/.bun/bin/bun` : "bun";
           
           try {
-            proc = spawn(bunPath, ["server/index.ts"], {
+            proc = spawn(bunPath, ["--watch", "server/index.ts"], {
               cwd,
               stdio: "inherit",
               env: process.env,
@@ -72,7 +72,7 @@ export default defineConfig(() => ({
   server: {
     port: 1420,
     strictPort: true,
-    host: host || false,
+    host: host || "0.0.0.0",
     hmr: host
       ? {
           protocol: "ws",
@@ -107,6 +107,22 @@ export default defineConfig(() => ({
         target: "http://127.0.0.1:3001",
         changeOrigin: true,
       },
+      "/screen": {
+        target: "http://127.0.0.1:3001",
+        changeOrigin: true,
+      },
+      "/share": {
+        target: "http://127.0.0.1:3001",
+        changeOrigin: true,
+      },
+      "/whip": {
+        target: "http://127.0.0.1:3001",
+        changeOrigin: true,
+      },
     },
+  },
+  preview: {
+    port: 4173,
+    host: host || "0.0.0.0",
   },
 }));

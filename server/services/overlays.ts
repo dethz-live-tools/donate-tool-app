@@ -1,9 +1,10 @@
-import { exec, execFile } from "node:child_process";
+import { execFile } from "node:child_process";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import process from "node:process";
 import type { OverlayMarketItem, OverlayMeta } from "../types.ts";
+import { classifyBlockedHost, escapeHtml, isSelfTargetHost } from "../utils.ts";
 
 export const OVERLAYS_DIR = path.resolve(process.cwd(), "overlays");
 
@@ -866,15 +867,6 @@ export function installMarketOverlay(overlayId: string): OverlayMeta | null {
   };
 }
 
-function escapeHtml(str: string): string {
-  return String(str)
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;")
-    .replace(/'/g, "&#039;");
-}
-
 export function createCustomOverlay(data: {
   id: string;
   name: string;
@@ -885,8 +877,12 @@ export function createCustomOverlay(data: {
 }): OverlayMeta {
   ensureOverlaysDir();
   const rawId = data.id.toLowerCase().replace(/[^a-z0-9-_]/g, "-").trim() || "my-overlay";
-  const safeId = rawId === "studio" ? "custom-studio" : rawId;
-  const targetDir = path.join(OVERLAYS_DIR, safeId);
+  const safeId = rawId === "studio" || rawId === "." || rawId === ".." ? "custom-studio" : rawId;
+  const targetDir = path.resolve(OVERLAYS_DIR, safeId);
+  const rel = path.relative(OVERLAYS_DIR, targetDir);
+  if (rel.startsWith("..") || path.isAbsolute(rel) || targetDir === OVERLAYS_DIR) {
+    throw new Error("Invalid custom overlay ID");
+  }
 
   if (!fs.existsSync(targetDir)) {
     fs.mkdirSync(targetDir, { recursive: true });
@@ -1056,10 +1052,24 @@ export function extractRepoName(url: string): string {
 
 export function checkGitAvailable(): Promise<boolean> {
   return new Promise((resolve) => {
-    exec("git --version", (err, stdout) => {
+    execFile("git", ["--version"], (err, stdout) => {
       resolve(!err && typeof stdout === "string" && stdout.includes("git version"));
     });
   });
+}
+
+export function validateRemoteRepoUrl(rawUrl: string): URL {
+  const parsed = new URL(rawUrl.trim());
+  if (parsed.protocol !== "https:" && parsed.protocol !== "http:") {
+    throw new Error("Only https:// and http:// repository URLs are allowed");
+  }
+  if (parsed.username || parsed.password) {
+    throw new Error("Repository URLs with embedded credentials are forbidden");
+  }
+  if (classifyBlockedHost(parsed.hostname) || isSelfTargetHost(parsed.hostname)) {
+    throw new Error("Targeting loopback, local network host, or metadata endpoints is forbidden");
+  }
+  return parsed;
 }
 
 function resolveZipUrl(gitUrl: string): string[] {
@@ -1106,15 +1116,37 @@ function resolveZipUrl(gitUrl: string): string[] {
 }
 
 function extractZip(zipFilePath: string, destDir: string): Promise<boolean> {
-  const platform = process.platform;
   return new Promise((resolve) => {
-    let cmd = "";
-    if (platform === "win32") {
-      cmd = `tar -xf "${zipFilePath}" -C "${destDir}" 2>nul || powershell -command "Expand-Archive -LiteralPath '${zipFilePath}' -DestinationPath '${destDir}' -Force"`;
-    } else {
-      cmd = `unzip -q -o "${zipFilePath}" -d "${destDir}"`;
+    if (process.platform === "win32") {
+      execFile("tar", ["-xf", zipFilePath, "-C", destDir], (tarErr) => {
+        if (!tarErr) {
+          resolve(true);
+          return;
+        }
+        execFile(
+          "powershell.exe",
+          [
+            "-NoProfile",
+            "-NonInteractive",
+            "-Command",
+            "Expand-Archive -LiteralPath $args[0] -DestinationPath $args[1] -Force",
+            zipFilePath,
+            destDir,
+          ],
+          (psErr) => {
+            if (psErr) {
+              console.error("[Overlays] Extract zip error:", psErr.message);
+              resolve(false);
+            } else {
+              resolve(true);
+            }
+          }
+        );
+      });
+      return;
     }
-    exec(cmd, (err) => {
+
+    execFile("unzip", ["-q", "-o", zipFilePath, "-d", destDir], (err) => {
       if (err) {
         console.error("[Overlays] Extract zip error:", err.message);
         resolve(false);
@@ -1125,38 +1157,67 @@ function extractZip(zipFilePath: string, destDir: string): Promise<boolean> {
   });
 }
 
-function copyRecursiveSync(src: string, dest: string) {
+function copyRecursiveSync(src: string, dest: string, destRoot: string = dest) {
   if (!fs.existsSync(src)) return;
+  const resolvedDestRoot = path.resolve(destRoot);
   fs.mkdirSync(dest, { recursive: true });
   const entries = fs.readdirSync(src, { withFileTypes: true });
   for (const entry of entries) {
-    if (entry.name === ".git" || entry.name === "__MACOSX") continue;
+    if (entry.name === ".git" || entry.name === "__MACOSX" || entry.isSymbolicLink()) continue;
     const srcPath = path.join(src, entry.name);
-    const destPath = path.join(dest, entry.name);
+    const destPath = path.resolve(dest, entry.name);
+    const rel = path.relative(resolvedDestRoot, destPath);
+    if (rel.startsWith("..") || path.isAbsolute(rel)) continue;
     if (entry.isDirectory()) {
-      copyRecursiveSync(srcPath, destPath);
-    } else {
+      copyRecursiveSync(srcPath, destPath, resolvedDestRoot);
+    } else if (entry.isFile()) {
       fs.copyFileSync(srcPath, destPath);
     }
   }
 }
 
+const MAX_ZIP_DOWNLOAD_BYTES = 25 * 1024 * 1024;
+
+async function fetchSafeZipResponse(initialUrl: string): Promise<Response | null> {
+  let currentUrl = validateRemoteRepoUrl(initialUrl).href;
+  for (let hop = 0; hop <= 3; hop++) {
+    const res = await fetch(currentUrl, {
+      redirect: "manual",
+      signal: AbortSignal.timeout(20_000),
+      headers: {
+        "User-Agent": "donate-socket-overlay-importer",
+        Accept: "*/*",
+      },
+    });
+    if (res.status >= 300 && res.status < 400) {
+      const loc = res.headers.get("location");
+      if (!loc) return null;
+      currentUrl = validateRemoteRepoUrl(new URL(loc, currentUrl).href).href;
+      continue;
+    }
+    return res;
+  }
+  return null;
+}
+
 async function downloadAndExtractZip(candidateUrls: string[], targetDir: string): Promise<boolean> {
-  const tmpZip = path.join(os.tmpdir(), `overlay-download-${Date.now()}.zip`);
-  const tmpExtract = path.join(os.tmpdir(), `overlay-extract-${Date.now()}`);
+  const tmpZip = path.join(os.tmpdir(), `overlay-download-${Date.now()}-${process.pid}.zip`);
+  const tmpExtract = path.join(os.tmpdir(), `overlay-extract-${Date.now()}-${process.pid}`);
 
   try {
     let downloaded = false;
     for (const url of candidateUrls) {
       try {
-        const res = await fetch(url, {
-          headers: {
-            "User-Agent": "donate-socket-overlay-importer",
-            Accept: "*/*",
-          },
-        });
-        if (res.ok) {
+        const res = await fetchSafeZipResponse(url);
+        if (res && res.ok) {
+          const contentLen = Number(res.headers.get("content-length"));
+          if (Number.isFinite(contentLen) && contentLen > MAX_ZIP_DOWNLOAD_BYTES) {
+            throw new Error("ZIP archive exceeds maximum allowed size");
+          }
           const arrayBuf = await res.arrayBuffer();
+          if (arrayBuf.byteLength > MAX_ZIP_DOWNLOAD_BYTES) {
+            throw new Error("ZIP archive exceeds maximum allowed size");
+          }
           if (arrayBuf.byteLength > 100) {
             fs.writeFileSync(tmpZip, Buffer.from(arrayBuf));
             downloaded = true;
@@ -1183,13 +1244,13 @@ async function downloadAndExtractZip(candidateUrls: string[], targetDir: string)
     let sourceDir = tmpExtract;
     if (entries.length === 1) {
       const singleDir = path.join(tmpExtract, entries[0]);
-      if (fs.statSync(singleDir).isDirectory()) {
+      if (!fs.lstatSync(singleDir).isSymbolicLink() && fs.statSync(singleDir).isDirectory()) {
         sourceDir = singleDir;
       }
     }
 
     fs.mkdirSync(targetDir, { recursive: true });
-    copyRecursiveSync(sourceDir, targetDir);
+    copyRecursiveSync(sourceDir, targetDir, targetDir);
     return true;
   } finally {
     try {
@@ -1213,13 +1274,14 @@ export async function pullOverlayFromGit(options: {
   if (!gitUrl) {
     throw new Error("Git repository URL is required");
   }
+  const safeGitUrl = validateRemoteRepoUrl(gitUrl).href;
 
   ensureOverlaysDir();
 
   // Auto-generate ID from repo name if not provided
   let safeId = (options.id || "").trim();
   if (!safeId) {
-    safeId = extractRepoName(gitUrl) || "imported-overlay";
+    safeId = extractRepoName(safeGitUrl) || "imported-overlay";
   } else {
     safeId = safeId.toLowerCase().replace(/[^a-z0-9_-]/g, "-");
   }
@@ -1243,15 +1305,19 @@ export async function pullOverlayFromGit(options: {
 
   if (hasGit) {
     try {
-      console.log(`[Overlays] Git detected. Cloning ${gitUrl}...`);
+      console.log(`[Overlays] Git detected. Cloning ${safeGitUrl}...`);
       await new Promise<void>((resolve, reject) => {
-        execFile("git", ["clone", "--depth", "1", "--", gitUrl, targetDir], (err, _stdout, stderr) => {
-          if (err) {
-            reject(new Error(`git clone error: ${stderr || err.message}`));
-          } else {
-            resolve();
+        execFile(
+          "git",
+          ["clone", "--depth", "1", "-c", "core.symlinks=false", "--", safeGitUrl, targetDir],
+          (err, _stdout, stderr) => {
+            if (err) {
+              reject(new Error(`git clone error: ${stderr || err.message}`));
+            } else {
+              resolve();
+            }
           }
-        });
+        );
       });
 
       // Remove .git inside overlay directory to avoid nested repo issues
@@ -1265,24 +1331,24 @@ export async function pullOverlayFromGit(options: {
       if (fs.existsSync(targetDir)) {
         fs.rmSync(targetDir, { recursive: true, force: true });
       }
-      const candidateUrls = resolveZipUrl(gitUrl);
+      const candidateUrls = resolveZipUrl(safeGitUrl);
       await downloadAndExtractZip(candidateUrls, targetDir);
     }
   } else {
     console.log(`[Overlays] Git not detected. Fetching repository ZIP archive...`);
     method = "zip_download";
-    const candidateUrls = resolveZipUrl(gitUrl);
+    const candidateUrls = resolveZipUrl(safeGitUrl);
     await downloadAndExtractZip(candidateUrls, targetDir);
   }
 
   // Ensure index.html exists
-  let indexPath = path.join(targetDir, "index.html");
+  const indexPath = path.join(targetDir, "index.html");
   if (!fs.existsSync(indexPath)) {
     const subdirs = ["dist", "public", "build", "overlay", "src"];
     for (const sub of subdirs) {
       const candidate = path.join(targetDir, sub, "index.html");
-      if (fs.existsSync(candidate)) {
-        copyRecursiveSync(path.join(targetDir, sub), targetDir);
+      if (fs.existsSync(candidate) && !fs.lstatSync(candidate).isSymbolicLink()) {
+        copyRecursiveSync(path.join(targetDir, sub), targetDir, targetDir);
         break;
       }
     }
@@ -1291,7 +1357,7 @@ export async function pullOverlayFromGit(options: {
   if (!fs.existsSync(indexPath)) {
     fs.writeFileSync(
       indexPath,
-      `<!DOCTYPE html><html><head><meta charset="utf-8"><title>${safeId}</title></head><body><h1>Overlay: ${safeId}</h1><p>Imported from ${gitUrl}</p></body></html>`,
+      `<!DOCTYPE html><html><head><meta charset="utf-8"><title>${escapeHtml(safeId)}</title></head><body><h1>Overlay: ${escapeHtml(safeId)}</h1><p>Imported from ${escapeHtml(safeGitUrl)}</p></body></html>`,
       "utf-8"
     );
   }

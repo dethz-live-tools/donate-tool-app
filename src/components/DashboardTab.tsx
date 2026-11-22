@@ -1,4 +1,5 @@
 import React from "react";
+import { API_BASE } from "../lib/apiBase";
 import {
   ALL_ROLES,
   ChatRole,
@@ -164,7 +165,7 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({
     const flush = () => {
       const payload = pendingConfigUpdatesRef.current;
       pendingConfigUpdatesRef.current = {};
-      fetch("http://127.0.0.1:3001/api/config", {
+      fetch(`${API_BASE}/api/config`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(payload),
@@ -365,7 +366,7 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({
     let active = true;
 
     // Load available voices
-    fetch("http://127.0.0.1:3001/api/tts/voices")
+    fetch(`${API_BASE}/api/tts/voices`)
       .then((res) => (res.ok ? res.json() : null))
       .then((data) => {
         if (active && data && Array.isArray(data.voices) && data.voices.length > 0) {
@@ -375,7 +376,7 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({
       .catch((err) => console.warn("[TTS] Could not load Edge TTS voices from server:", err));
 
     // Load config from config.yaml
-    fetch("http://127.0.0.1:3001/api/config")
+    fetch(`${API_BASE}/api/config`)
       .then((res) => (res.ok ? res.json() : null))
       .then((cfg) => {
         if (!active || !cfg) return;
@@ -447,7 +448,7 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({
     const pitchParam = ttsPitchRef.current;
     const volumeParam = ttsVolumeRef.current;
 
-    const url = `http://127.0.0.1:3001/api/tts/speak?text=${encodeURIComponent(
+    const url = `${API_BASE}/api/tts/speak?text=${encodeURIComponent(
       nextText
     )}&voice=${encodeURIComponent(voiceParam)}&rate=${rateParam}&pitch=${pitchParam}`;
 
@@ -565,7 +566,7 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({
 
   const handleTestTtsWebhook = async () => {
     try {
-      const res = await fetch("http://127.0.0.1:3001/api/test-webhook", {
+      const res = await fetch(`${API_BASE}/api/test-webhook`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({

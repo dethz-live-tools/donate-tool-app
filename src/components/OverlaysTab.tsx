@@ -326,7 +326,7 @@ export const OverlaysTab: React.FC<OverlaysTabProps> = ({
         <p style={{ fontSize: "13px", color: "var(--ctp-subtext0)", lineHeight: "1.6" }}>
           {t("All overlays are statically served from your local desktop bridge at")}{" "}
           <code className="mono-font" style={{ color: "var(--accent-primary)", background: "var(--ctp-crust)", padding: "2px 6px" }}>
-            http://127.0.0.1:3001/overlays/&lt;id&gt;/
+            {apiBase}/overlays/&lt;id&gt;/
           </code>
           . {t("Add any overlay as a")} <strong>{t("Browser Source")}</strong> {t("in OBS, set its width and height, and check")} <strong>{t("Shutdown source when not visible")}</strong>. {t("Overlays automatically receive live stream and music events via SSE.")}
         </p>

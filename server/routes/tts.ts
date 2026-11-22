@@ -29,6 +29,10 @@ export async function handleTtsRoutes(
       sendJson(res, 400, { error: "Query parameter 'text' is required" });
       return true;
     }
+    if (text.trim().length > 1000) {
+      sendJson(res, 400, { error: "Query parameter 'text' exceeds maximum 1000 characters" });
+      return true;
+    }
 
     try {
       const audioBuffer = await synthesizeEdgeTTS({ text, voice, rate, pitch });
@@ -52,6 +56,10 @@ export async function handleTtsRoutes(
       const text = (body.text || "").trim();
       if (!text) {
         sendJson(res, 400, { error: "Body field 'text' is required" });
+        return true;
+      }
+      if (text.length > 1000) {
+        sendJson(res, 400, { error: "Body field 'text' exceeds maximum 1000 characters" });
         return true;
       }
 

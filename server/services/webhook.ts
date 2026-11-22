@@ -1,6 +1,6 @@
 import { broadcastState, state } from "../state.ts";
 import type { LogEntry, WebhookPayload } from "../types.ts";
-import { classifyBlockedHost, PORT } from "../utils.ts";
+import { classifyBlockedHost, isSelfTargetHost, PORT } from "../utils.ts";
 
 export function validateWebhookUrl(uri: string): void {
   const parsed = new URL(uri);
@@ -18,7 +18,7 @@ export function validateWebhookUrl(uri: string): void {
     throw new Error("Targeting cloud metadata services or link-local addresses is forbidden");
   }
   const port = parsed.port ? Number(parsed.port) : (parsed.protocol === "https:" ? 443 : 80);
-  if (blocked === "loopback" && (port === 3001 || port === PORT)) {
+  if (isSelfTargetHost(parsed.hostname) && (port === 3001 || port === PORT)) {
     throw new Error("Webhook cannot target the application's own API port");
   }
 }

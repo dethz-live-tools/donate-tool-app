@@ -1,3 +1,4 @@
+import { randomBytes, timingSafeEqual } from "node:crypto";
 import type http from "node:http";
 import { saveConfig } from "../config.ts";
 import {
@@ -16,7 +17,7 @@ import {
   transferPlayback,
 } from "../services/spotify.ts";
 import { broadcastState, getSpotifyPublicState, spotifyState, state } from "../state.ts";
-import { parseJsonBody, PORT, sendJson } from "../utils.ts";
+import { escapeHtml, parseJsonBody, PORT, sendJson } from "../utils.ts";
 
 let expectedOAuthState: string | null = null;
 
@@ -50,7 +51,7 @@ export async function handleSpotifyRoutes(
       "user-library-read",
     ].join(" ");
 
-    expectedOAuthState = Math.random().toString(36).slice(2) + Math.random().toString(36).slice(2);
+    expectedOAuthState = randomBytes(24).toString("hex");
 
     const params = new URLSearchParams({
       client_id: spotifyState.clientId,
@@ -74,17 +75,28 @@ export async function handleSpotifyRoutes(
     const error = url.searchParams.get("error");
     const returnedState = url.searchParams.get("state");
 
-    if (expectedOAuthState && returnedState !== expectedOAuthState) {
-      expectedOAuthState = null;
-      res.writeHead(403, { "Content-Type": "text/html" });
-      res.end(`<h3>Spotify Authentication Failed: Invalid OAuth state parameter (CSRF protection)</h3>`);
+    const expected = expectedOAuthState;
+    expectedOAuthState = null;
+    const validState =
+      Boolean(expected && returnedState) &&
+      expected!.length === returnedState!.length &&
+      timingSafeEqual(Buffer.from(expected!), Buffer.from(returnedState!));
+
+    if (!validState) {
+      res.writeHead(403, {
+        "Content-Type": "text/html; charset=utf-8",
+        "X-Content-Type-Options": "nosniff",
+      });
+      res.end("<h3>Spotify Authentication Failed: Invalid OAuth state parameter (CSRF protection)</h3>");
       return true;
     }
-    expectedOAuthState = null;
 
     if (error || !code) {
-      res.writeHead(400, { "Content-Type": "text/html" });
-      res.end(`<h3>Spotify Authentication Failed: ${error || "Missing code"}</h3>`);
+      res.writeHead(400, {
+        "Content-Type": "text/html; charset=utf-8",
+        "X-Content-Type-Options": "nosniff",
+      });
+      res.end(`<h3>Spotify Authentication Failed: ${escapeHtml(error || "Missing code")}</h3>`);
       return true;
     }
 
@@ -109,8 +121,11 @@ export async function handleSpotifyRoutes(
 
       if (!tokenRes.ok) {
         const text = await tokenRes.text();
-        res.writeHead(400, { "Content-Type": "text/html" });
-        res.end(`<h3>Token Exchange Failed:</h3><pre>${text}</pre>`);
+        res.writeHead(400, {
+          "Content-Type": "text/html; charset=utf-8",
+          "X-Content-Type-Options": "nosniff",
+        });
+        res.end(`<h3>Token Exchange Failed:</h3><pre>${escapeHtml(text)}</pre>`);
         return true;
       }
 
@@ -151,8 +166,11 @@ export async function handleSpotifyRoutes(
         </html>
       `);
     } catch (err: any) {
-      res.writeHead(500, { "Content-Type": "text/html" });
-      res.end(`<h3>Error: ${err.message}</h3>`);
+      res.writeHead(500, {
+        "Content-Type": "text/html; charset=utf-8",
+        "X-Content-Type-Options": "nosniff",
+      });
+      res.end(`<h3>Error: ${escapeHtml(err?.message || "Unknown error")}</h3>`);
     }
     return true;
   }

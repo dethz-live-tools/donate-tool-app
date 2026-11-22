@@ -25,6 +25,8 @@ dist-ssr
 connector-config.json
 config.yaml
 *.local.yaml
+screen-share-cert.pem
+screen-share-key.pem
 
 # Pentest logs
 pentest_log

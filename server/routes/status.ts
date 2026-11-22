@@ -39,7 +39,7 @@ export async function handleStatusRoutes(
       "Content-Type": "text/event-stream; charset=utf-8",
       "Cache-Control": "no-cache, no-transform",
       Connection: "keep-alive",
-      "Access-Control-Allow-Origin": "*",
+      ...(res.getHeader("Access-Control-Allow-Origin") ? {} : { "Access-Control-Allow-Origin": "*" }),
       "X-Accel-Buffering": "no",
     });
     res.write(": keep-alive\n\n");

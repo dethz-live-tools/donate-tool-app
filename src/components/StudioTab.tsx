@@ -434,7 +434,8 @@ export const StudioTab: React.FC<StudioTabProps> = ({
         host.startsWith("::ffff:127.") ||
         host === "::ffff:0:0" ||
         host === "::ffff:0.0.0.0";
-      if (isLoopback && (port === 3001 || port === Number(window.location.port))) {
+      const currentHost = window.location.hostname.toLowerCase().replace(/^\[|\]$/g, "");
+      if ((isLoopback || host === currentHost) && (port === 3001 || port === Number(window.location.port))) {
         throw new Error(t("External layer cannot target the application's own API port."));
       }
       handleAddLayer({ id: "", name: externalName.trim() || url.hostname, width: 480, height: 160 }, url.href);
