@@ -4,6 +4,8 @@ import { resetSpotifyWebhookTracker } from "../services/spotify.ts";
 import { broadcastState, getSpotifyPublicState, sseClients, state } from "../state.ts";
 import { parseJsonBody, sendJson } from "../utils.ts";
 
+export const MAX_STATUS_SSE_CLIENTS = 100;
+
 export async function handleStatusRoutes(
   req: http.IncomingMessage,
   res: http.ServerResponse,
@@ -34,6 +36,10 @@ export async function handleStatusRoutes(
       url.pathname === "/api/status/stream/") &&
     req.method === "GET"
   ) {
+    if (sseClients.length >= MAX_STATUS_SSE_CLIENTS) {
+      sendJson(res, 503, { error: "Too many active SSE clients" });
+      return true;
+    }
     state.spotify = getSpotifyPublicState();
     res.writeHead(200, {
       "Content-Type": "text/event-stream; charset=utf-8",
@@ -58,10 +64,13 @@ export async function handleStatusRoutes(
       })}\n\n`
     );
     sseClients.push(res);
-    req.on("close", () => {
+    const cleanup = () => {
       const idx = sseClients.indexOf(res);
       if (idx !== -1) sseClients.splice(idx, 1);
-    });
+    };
+    req.on("close", cleanup);
+    req.on("error", cleanup);
+    res.on("close", cleanup);
     return true;
   }
 

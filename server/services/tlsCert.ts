@@ -1,4 +1,4 @@
-import { createPrivateKey, generateKeyPairSync, randomBytes, sign, X509Certificate } from "node:crypto";
+import { createPrivateKey, generateKeyPairSync, randomBytes, randomUUID, sign, X509Certificate } from "node:crypto";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -233,6 +233,43 @@ function isReusableCert(certPem: string, keyPem: string, requiredIps: string[]):
   }
 }
 
+function isRegularNonSymlinkFile(filePath: string): boolean {
+  try {
+    const stat = fs.lstatSync(filePath);
+    return !stat.isSymbolicLink() && stat.isFile();
+  } catch {
+    return false;
+  }
+}
+
+function writeFileAtomic(filePath: string, content: string, mode: number): void {
+  try {
+    const existing = fs.lstatSync(filePath);
+    if (existing.isSymbolicLink()) {
+      fs.unlinkSync(filePath);
+    } else if (existing.isDirectory()) {
+      throw new Error(`Refusing to overwrite directory at ${filePath}`);
+    }
+  } catch (err: any) {
+    if (err?.code !== "ENOENT") {
+      throw err;
+    }
+  }
+
+  const tmpPath = `${filePath}.${randomUUID()}.tmp`;
+  try {
+    fs.writeFileSync(tmpPath, content, { encoding: "utf-8", flag: "wx", mode });
+    try {
+      fs.chmodSync(tmpPath, mode);
+    } catch {}
+    fs.renameSync(tmpPath, filePath);
+  } finally {
+    try {
+      fs.rmSync(tmpPath, { force: true });
+    } catch {}
+  }
+}
+
 export function loadOrCreateScreenShareTlsCert(
   lanIps: string[],
   certDir: string = path.dirname(CONFIG_FILE)
@@ -241,7 +278,7 @@ export function loadOrCreateScreenShareTlsCert(
   const certPath = path.join(certDir, CERT_FILENAME);
   const keyPath = path.join(certDir, KEY_FILENAME);
 
-  if (fs.existsSync(certPath) && fs.existsSync(keyPath)) {
+  if (isRegularNonSymlinkFile(certPath) && isRegularNonSymlinkFile(keyPath)) {
     try {
       const certPem = fs.readFileSync(certPath, "utf-8");
       const keyPem = fs.readFileSync(keyPath, "utf-8");
@@ -255,11 +292,8 @@ export function loadOrCreateScreenShareTlsCert(
   const created = generateSelfSignedCert(requiredIps);
   try {
     fs.mkdirSync(certDir, { recursive: true, mode: 0o700 });
-    fs.writeFileSync(keyPath, created.key, { encoding: "utf-8", mode: 0o600 });
-    try {
-      fs.chmodSync(keyPath, 0o600);
-    } catch {}
-    fs.writeFileSync(certPath, created.cert, { encoding: "utf-8", mode: 0o644 });
+    writeFileAtomic(keyPath, created.key, 0o600);
+    writeFileAtomic(certPath, created.cert, 0o644);
   } catch (err) {
     console.warn("[screen-share] Failed to persist self-signed TLS cert (using in-memory cert):", err);
   }

@@ -48,6 +48,37 @@ export function isPrivateOrLanHost(hostname: string): boolean {
   return false;
 }
 
+export function isAllowedOrigin(origin?: string): boolean {
+  if (!origin) return true; // Native desktop apps, curl, direct same-origin requests
+  try {
+    const parsed = new URL(origin);
+    const host = parsed.hostname.toLowerCase();
+    // Allow Tauri webviews
+    if (parsed.protocol === "tauri:" || host === "tauri.localhost") return true;
+    if (parsed.protocol !== "http:" && parsed.protocol !== "https:") return false;
+    // Allow loopback and LAN/private origins (Vite dev/preview, OBS Browser source, LAN tabs)
+    return isPrivateOrLanHost(host);
+  } catch {
+    return false;
+  }
+}
+
+export function parseRequestUrl(req: { url?: string; headers?: { host?: string | string[] } }): URL | null {
+  const rawUrl = req.url || "/";
+  const rawHost = Array.isArray(req.headers?.host) ? req.headers.host[0] : req.headers?.host;
+  const host = typeof rawHost === "string" && rawHost.trim() ? rawHost.trim() : "localhost";
+  try {
+    return new URL(rawUrl, `http://${host}`);
+  } catch {
+    try {
+      if (rawUrl.startsWith("/")) {
+        return new URL(rawUrl, "http://localhost");
+      }
+    } catch {}
+    return null;
+  }
+}
+
 export function escapeHtml(str: string): string {
   return String(str)
     .replace(/&/g, "&amp;")

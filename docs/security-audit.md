@@ -72,6 +72,22 @@ A comprehensive source-code security audit was conducted on `donate-tools-pc`. T
 - **Vulnerability**: On `0.0.0.0:3001`, remote LAN clients could trigger `/api/overlays/open-folder` or pass the host's own active LAN IP + port `3001` in webhooks / Studio external iframe layers; API management routes on LAN rely on trusted subnet isolation.
 - **Remediation**: Restricted `/api/overlays/open-folder` via `isLoopbackAddress()` (HTTP `403` from non-loopback peers) and added `isSelfTargetHost()` / `currentHost` port checks for bridge port `3001`. Set `HOST=127.0.0.1` to restrict the main bridge to loopback only.
 
+### 1.18 Static Overlay Symlink Containment & Safe ZIP Staging (`VULN-2026-022`)
+- **Vulnerability**: `GET/HEAD /overlays/*` (`server/routes/overlays.ts`) performed lexical `path.relative()` checks before following symlinks with `fs.statSync` / `fs.readFileSync`, left `decodeURIComponent()` unguarded against malformed encodings (`URIError`), and `downloadAndExtractZip()` (`server/services/overlays.ts`) staged archives at predictable paths directly inside `os.tmpdir()`.
+- **Remediation**: Return HTTP `400` on invalid URL encoding, reject symlinks via `fs.lstatSync` plus `fs.realpathSync` containment (`403`), and extract archives inside an isolated `0o700` `fs.mkdtempSync()` working directory.
+
+### 1.19 Origin-Scoped WHIP CORS & `/whip` Bridge Cross-Origin Guard (`VULN-2026-023`)
+- **Vulnerability**: `setWhipCorsHeaders()` (`server/services/screenShare.ts`) returned `Access-Control-Allow-Origin: *` to arbitrary public web origins on `:3002`, and `server/index.ts` previously blocked untrusted cross-origin requests only for `/api/*`, omitting `/whip` and `/whip/*` on `:3001`.
+- **Remediation**: Moved `isAllowedOrigin()` into `server/utils.ts`, echoed CORS headers only for loopback/Tauri/LAN origins (using `*` only when `Origin` is absent for native WHIP clients), and returned HTTP `403` to untrusted public web origins on `OPTIONS`, `/whip*`, and non-GET/HEAD requests across `:3001` and `:3002`.
+
+### 1.20 Atomic Self-Signed TLS Key/Cert Persistence (`VULN-2026-024`)
+- **Vulnerability**: `loadOrCreateScreenShareTlsCert()` (`server/services/tlsCert.ts`) read and overwrote `screen-share-key.pem` / `screen-share-cert.pem` in place via `fs.existsSync` / `fs.writeFileSync` without rejecting pre-existing symlinks or using atomic replacement.
+- **Remediation**: Added `isRegularNonSymlinkFile()` (`fs.lstatSync`) checks before loading cached PEMs and `writeFileAtomic()` (unlinking symlinks, writing via `flag: "wx"`, and swapping with `fs.renameSync`).
+
+### 1.21 Safe Request URL Parsing & Connection Bounds (`VULN-2026-025`)
+- **Vulnerability**: Unchecked `new URL(req.url, "http://" + host)` threw `TypeError` on malformed `Host` headers (`500` errors), `:3002` `tcpServer` accepted unbounded concurrent sockets, and `/api/events` / `/api/status/stream` accepted unbounded SSE listeners.
+- **Remediation**: Added `parseRequestUrl()` (`server/utils.ts`) returning HTTP `400` when request URLs cannot parse, bounded concurrent multiplexer client sockets (`MAX_WHIP_CLIENT_SOCKETS = 100`), and capped SSE stream listeners (`MAX_STATUS_SSE_CLIENTS = 100`, HTTP `503`) with full close/error cleanup.
+
 ---
 
 ## 2. CI/CD Automated Security Scanning & Verification

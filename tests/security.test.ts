@@ -9,13 +9,22 @@ const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "donate-security-test-"));
 process.env.DONATE_CONFIG_FILE = path.join(tempDir, "config.yaml");
 
 const { validateWebhookUrl } = await import("../server/services/webhook.ts");
-const { getLanAddresses, HOST, isLoopbackAddress, isPrivateOrLanHost, parseJsonBody } = await import("../server/utils.ts");
+const {
+  getLanAddresses,
+  HOST,
+  isAllowedOrigin,
+  isLoopbackAddress,
+  isPrivateOrLanHost,
+  parseJsonBody,
+  parseRequestUrl,
+} = await import("../server/utils.ts");
 const { isValidExternalLayerUrl } = await import("../server/config.ts");
 const { validateRemoteRepoUrl } = await import("../server/services/overlays.ts");
 const { buildSSML } = await import("../server/services/tts.ts");
 const { handleSpotifyRoutes } = await import("../server/routes/spotify.ts");
 const { handleOverlayRoutes } = await import("../server/routes/overlays.ts");
-const { spotifyState } = await import("../server/state.ts");
+const { handleStatusRoutes, MAX_STATUS_SSE_CLIENTS } = await import("../server/routes/status.ts");
+const { spotifyState, sseClients } = await import("../server/state.ts");
 const { resolveApiBase } = await import("../src/lib/apiBase.ts");
 
 afterAll(() => {
@@ -193,4 +202,96 @@ describe("input, SSRF, SSML, OAuth, and local-folder hardening", () => {
     await expect(bodyPromise).rejects.toThrow("Payload too large");
     expect(destroyed).toBe(true);
   });
+
+  test("validates allowed CORS origins, handles malformed Host headers safely, and caps status SSE clients", async () => {
+    expect(isAllowedOrigin(undefined)).toBe(true);
+    expect(isAllowedOrigin("tauri://localhost")).toBe(true);
+    expect(isAllowedOrigin("http://localhost:1420")).toBe(true);
+    expect(isAllowedOrigin("https://192.168.1.42:3002")).toBe(true);
+    expect(isAllowedOrigin("https://evil.example")).toBe(false);
+    expect(isAllowedOrigin("null")).toBe(false);
+    expect(isAllowedOrigin("javascript:alert(1)")).toBe(false);
+
+    const safeParsed = parseRequestUrl({ url: "/api/status", headers: { host: "bad host:3001" } });
+    expect(safeParsed?.pathname).toBe("/api/status");
+    expect(parseRequestUrl({ url: "http://[::1", headers: { host: "localhost" } })).toBeNull();
+
+    expect(MAX_STATUS_SSE_CLIENTS).toBe(100);
+    const saved = [...sseClients];
+    try {
+      while (sseClients.length < MAX_STATUS_SSE_CLIENTS) {
+        sseClients.push({} as unknown as http.ServerResponse);
+      }
+      const sseRes = new MockRes();
+      const handled = await handleStatusRoutes(
+        { method: "GET" } as http.IncomingMessage,
+        sseRes as unknown as http.ServerResponse,
+        new URL("http://127.0.0.1:3001/api/events")
+      );
+      expect(handled).toBe(true);
+      expect(sseRes.statusCode).toBe(503);
+    } finally {
+      sseClients.length = 0;
+      sseClients.push(...saved);
+    }
+  });
+
+  test("rejects malformed percent encoding and symlink traversal in /overlays/* static handler", async () => {
+    const badEncodingRes = new MockRes();
+    const handledBad = await handleOverlayRoutes(
+      { method: "GET" } as http.IncomingMessage,
+      badEncodingRes as unknown as http.ServerResponse,
+      new URL("http://127.0.0.1:3001/overlays/%E0%A4%A")
+    );
+    expect(handledBad).toBe(true);
+    expect(badEncodingRes.statusCode).toBe(400);
+
+    const sandboxRoot = fs.mkdtempSync(path.join(tempDir, "overlay-symlink-test-"));
+    const overlaysDir = path.join(sandboxRoot, "overlays");
+    fs.mkdirSync(overlaysDir, { recursive: true });
+    const outsideSecret = path.join(sandboxRoot, "secret.txt");
+    fs.writeFileSync(outsideSecret, "TOP_SECRET_VALUE", "utf-8");
+    const okFile = path.join(overlaysDir, "ok.txt");
+    fs.writeFileSync(okFile, "SAFE_ASSET", "utf-8");
+    fs.symlinkSync(outsideSecret, path.join(overlaysDir, "leak.txt"));
+    fs.symlinkSync(sandboxRoot, path.join(overlaysDir, "escape-dir"));
+
+    const overlaysRouteModule = path.resolve(import.meta.dir, "..", "server", "routes", "overlays.ts");
+    const script = `
+      const { handleOverlayRoutes } = await import(${JSON.stringify(overlaysRouteModule)});
+      function runReq(p) {
+        return new Promise((resolve) => {
+          const res = {
+            statusCode: 200,
+            headers: {},
+            body: "",
+            writeHead(code, h) { this.statusCode = code; if (h) Object.assign(this.headers, h); return this; },
+            end(chunk) { if (chunk) this.body += chunk.toString(); resolve(this); return this; },
+          };
+          void handleOverlayRoutes({ method: "GET" }, res, new URL("http://127.0.0.1:3001" + p));
+        });
+      }
+      const rOk = await runReq("/overlays/ok.txt");
+      const rDirect = await runReq("/overlays/leak.txt");
+      const rDir = await runReq("/overlays/escape-dir/secret.txt");
+      console.log(JSON.stringify({
+        ok: [rOk.statusCode, rOk.body],
+        direct: [rDirect.statusCode, rDirect.body.includes("TOP_SECRET_VALUE")],
+        dir: [rDir.statusCode, rDir.body.includes("TOP_SECRET_VALUE")],
+      }));
+      process.exit(0);
+    `;
+    const child = Bun.spawnSync([process.execPath, "-e", script], {
+      cwd: sandboxRoot,
+      env: { ...process.env, DONATE_CONFIG_FILE: path.join(sandboxRoot, "config.yaml") },
+      stdout: "pipe",
+      stderr: "pipe",
+      timeout: 10_000,
+    });
+    expect(child.exitCode).toBe(0);
+    const parsed = JSON.parse(child.stdout.toString().trim());
+    expect(parsed.ok).toEqual([200, "SAFE_ASSET"]);
+    expect(parsed.direct).toEqual([403, false]);
+    expect(parsed.dir).toEqual([403, false]);
+  }, 15_000);
 });

@@ -5,7 +5,7 @@ import { ensureOverlaysDir } from "./services/overlays.ts";
 import { startScreenShareServer } from "./services/screenShare.ts";
 import { startSpotifyPolling } from "./services/spotify.ts";
 import { initialConfig, spotifyState } from "./state.ts";
-import { getLanAddresses, HOST, isPrivateOrLanHost, PORT, sendJson } from "./utils.ts";
+import { getLanAddresses, HOST, isAllowedOrigin, parseRequestUrl, PORT, sendJson } from "./utils.ts";
 
 process.on("uncaughtException", (err) => {
   console.error("[server] Uncaught exception:", err);
@@ -30,20 +30,7 @@ if (initialConfig.screenShare?.enabled) {
   });
 }
 
-export function isAllowedOrigin(origin?: string): boolean {
-  if (!origin) return true; // Native desktop apps, curl, direct same-origin requests
-  try {
-    const parsed = new URL(origin);
-    const host = parsed.hostname.toLowerCase();
-    // Allow Tauri webviews
-    if (parsed.protocol === "tauri:" || host === "tauri.localhost") return true;
-    if (parsed.protocol !== "http:" && parsed.protocol !== "https:") return false;
-    // Allow loopback and LAN/private origins (Vite dev/preview, OBS Browser source, LAN tabs)
-    return isPrivateOrLanHost(host);
-  } catch {
-    return false;
-  }
-}
+export { isAllowedOrigin } from "./utils.ts";
 
 export const server = http.createServer(async (req, res) => {
   try {
@@ -72,10 +59,19 @@ export const server = http.createServer(async (req, res) => {
       return;
     }
 
-    const url = new URL(req.url || "/", `http://${req.headers.host || "localhost"}`);
+    const url = parseRequestUrl(req);
+    if (!url) {
+      sendJson(res, 400, { error: "Bad Request" });
+      return;
+    }
 
-    // Block cross-origin requests from untrusted external web pages targeting /api/*
-    if (!allowed && url.pathname.startsWith("/api/")) {
+    // Block cross-origin requests from untrusted external web pages targeting /api/* or /whip*
+    const cleanPath = url.pathname.replace(/\/+$/, "").toLowerCase() || "/";
+    const isProtectedCrossOriginPath =
+      url.pathname.startsWith("/api/") ||
+      cleanPath === "/whip" ||
+      cleanPath.startsWith("/whip/");
+    if (!allowed && isProtectedCrossOriginPath) {
       sendJson(res, 403, { error: "Cross-Origin Request Blocked" });
       return;
     }

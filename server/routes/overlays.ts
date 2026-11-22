@@ -306,7 +306,13 @@ export async function handleOverlayRoutes(
   // 1. Static file serving for /overlays/...
   if (url.pathname.startsWith("/overlays") && (req.method === "GET" || req.method === "HEAD")) {
     const rawSubpath = url.pathname.replace(/^\/overlays\/?/, "");
-    const decodedSubpath = decodeURIComponent(rawSubpath);
+    let decodedSubpath: string;
+    try {
+      decodedSubpath = decodeURIComponent(rawSubpath);
+    } catch {
+      sendJson(res, 400, { success: false, error: "Invalid overlay asset path encoding" });
+      return true;
+    }
     let targetPath = path.resolve(OVERLAYS_DIR, decodedSubpath);
 
     // Prevent directory traversal attacks
@@ -320,12 +326,52 @@ export async function handleOverlayRoutes(
       return true;
     }
 
-    // If requesting directory, serve index.html inside it
-    if (fs.existsSync(targetPath) && fs.statSync(targetPath).isDirectory()) {
-      targetPath = path.join(targetPath, "index.html");
+    let stat: fs.Stats;
+    try {
+      stat = fs.lstatSync(targetPath);
+    } catch {
+      sendJson(res, 404, { success: false, error: "Overlay asset not found" });
+      return true;
     }
 
-    if (!fs.existsSync(targetPath) || !fs.statSync(targetPath).isFile()) {
+    if (stat.isSymbolicLink()) {
+      sendJson(res, 403, { success: false, error: "Access denied: symlinks are not allowed" });
+      return true;
+    }
+
+    // If requesting directory, serve index.html inside it
+    if (stat.isDirectory()) {
+      targetPath = path.join(targetPath, "index.html");
+      try {
+        stat = fs.lstatSync(targetPath);
+      } catch {
+        sendJson(res, 404, { success: false, error: "Overlay asset not found" });
+        return true;
+      }
+      if (stat.isSymbolicLink()) {
+        sendJson(res, 403, { success: false, error: "Access denied: symlinks are not allowed" });
+        return true;
+      }
+    }
+
+    if (!stat.isFile()) {
+      sendJson(res, 404, { success: false, error: "Overlay asset not found" });
+      return true;
+    }
+
+    try {
+      const realRoot = fs.realpathSync(OVERLAYS_DIR);
+      const realTarget = fs.realpathSync(targetPath);
+      const realRelative = path.relative(realRoot, realTarget);
+      if (
+        realRelative.startsWith("..") ||
+        path.isAbsolute(realRelative) ||
+        (realTarget !== realRoot && !realTarget.startsWith(realRoot + path.sep))
+      ) {
+        sendJson(res, 403, { success: false, error: "Access denied: symlink escape detected" });
+        return true;
+      }
+    } catch {
       sendJson(res, 404, { success: false, error: "Overlay asset not found" });
       return true;
     }

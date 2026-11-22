@@ -1201,8 +1201,9 @@ async function fetchSafeZipResponse(initialUrl: string): Promise<Response | null
 }
 
 async function downloadAndExtractZip(candidateUrls: string[], targetDir: string): Promise<boolean> {
-  const tmpZip = path.join(os.tmpdir(), `overlay-download-${Date.now()}-${process.pid}.zip`);
-  const tmpExtract = path.join(os.tmpdir(), `overlay-extract-${Date.now()}-${process.pid}`);
+  const tmpWorkDir = fs.mkdtempSync(path.join(os.tmpdir(), "donate-overlay-zip-"));
+  const tmpZip = path.join(tmpWorkDir, "archive.zip");
+  const tmpExtract = path.join(tmpWorkDir, "extract");
 
   try {
     let downloaded = false;
@@ -1254,8 +1255,7 @@ async function downloadAndExtractZip(candidateUrls: string[], targetDir: string)
     return true;
   } finally {
     try {
-      if (fs.existsSync(tmpZip)) fs.unlinkSync(tmpZip);
-      if (fs.existsSync(tmpExtract)) fs.rmSync(tmpExtract, { recursive: true, force: true });
+      fs.rmSync(tmpWorkDir, { recursive: true, force: true });
     } catch {}
   }
 }

@@ -16,6 +16,7 @@ const {
   getScreenShareStatus,
   handleWhipRequest,
   markSessionConnected,
+  MAX_WHIP_CLIENT_SOCKETS,
   parseTrickleIceSdpFrag,
   registerReceiverPeer,
   relayMirrorAnswer,
@@ -434,5 +435,71 @@ describe("WHIP Screen Share Receiver", () => {
     expect(loadConfig().screenShare?.port).toBe(3002);
 
     disconnectActiveSession();
+  });
+
+  test("restricts WHIP CORS to private/LAN origins, survives malformed Host, and guards TLS key symlinks", async () => {
+    expect(MAX_WHIP_CLIENT_SOCKETS).toBe(100);
+
+    // Untrusted public origin blocked from OPTIONS and POST /whip with no ACAO reflection
+    const blockedOpt = new MockHttpResponse();
+    await handleWhipRequest(
+      new MockHttpRequest("OPTIONS", "/whip", { origin: "https://evil.example" }) as unknown as http.IncomingMessage,
+      blockedOpt as unknown as http.ServerResponse
+    );
+    expect(blockedOpt.statusCode).toBe(403);
+    expect(blockedOpt.headers["access-control-allow-origin"]).toBeUndefined();
+
+    const blockedPost = new MockHttpResponse();
+    await handleWhipRequest(
+      new MockHttpRequest(
+        "POST",
+        "/whip",
+        { origin: "https://evil.example", authorization: `Bearer ${TEST_TOKEN}`, "content-type": "application/sdp" },
+        SAMPLE_OFFER
+      ) as unknown as http.IncomingMessage,
+      blockedPost as unknown as http.ServerResponse
+    );
+    expect(blockedPost.statusCode).toBe(403);
+    expect(blockedPost.headers["access-control-allow-origin"]).toBeUndefined();
+
+    const blockedGetShare = new MockHttpResponse();
+    await handleWhipRequest(
+      new MockHttpRequest("GET", "/share", { origin: "https://evil.example" }) as unknown as http.IncomingMessage,
+      blockedGetShare as unknown as http.ServerResponse
+    );
+    expect(blockedGetShare.headers["access-control-allow-origin"]).toBeUndefined();
+
+    // Private LAN origin echoed cleanly on preflight
+    const allowedOpt = new MockHttpResponse();
+    await handleWhipRequest(
+      new MockHttpRequest("OPTIONS", "/whip", { origin: "https://192.168.1.42:3002" }) as unknown as http.IncomingMessage,
+      allowedOpt as unknown as http.ServerResponse
+    );
+    expect(allowedOpt.statusCode).toBe(204);
+    expect(allowedOpt.headers["access-control-allow-origin"]).toBe("https://192.168.1.42:3002");
+
+    // Malformed Host header does not crash GET /share
+    const malformedHostRes = new MockHttpResponse();
+    await handleWhipRequest(
+      new MockHttpRequest("GET", "/share", { host: "bad host:3002" }) as unknown as http.IncomingMessage,
+      malformedHostRes as unknown as http.ServerResponse
+    );
+    expect(malformedHostRes.statusCode).toBe(200);
+
+    // Symlinked TLS key/cert in certDir must be ignored and replaced safely without altering sentinel target
+    const tlsDir = path.join(tempDir, "tls-symlink");
+    fs.mkdirSync(tlsDir, { recursive: true });
+    const sentinelPath = path.join(tempDir, "tls-sentinel.txt");
+    fs.writeFileSync(sentinelPath, "DO_NOT_OVERWRITE", { mode: 0o644 });
+    const existing = loadOrCreateScreenShareTlsCert(["192.168.1.34"], tlsDir);
+    const keyPath = path.join(tlsDir, "screen-share-key.pem");
+    fs.unlinkSync(keyPath);
+    fs.symlinkSync(sentinelPath, keyPath);
+
+    const rotated = loadOrCreateScreenShareTlsCert(["192.168.1.34"], tlsDir);
+    expect(rotated.fingerprint).not.toBe(existing.fingerprint);
+    expect(fs.readFileSync(sentinelPath, "utf-8")).toBe("DO_NOT_OVERWRITE");
+    expect(fs.lstatSync(keyPath).isSymbolicLink()).toBe(false);
+    expect(fs.lstatSync(keyPath).isFile()).toBe(true);
   });
 });

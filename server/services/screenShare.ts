@@ -9,7 +9,7 @@ import {
   saveConfig,
 } from "../config.ts";
 import type { ScreenShareSessionInfo, ScreenShareStatus } from "../types.ts";
-import { getLanAddresses, HOST, PORT } from "../utils.ts";
+import { getLanAddresses, HOST, isAllowedOrigin, parseRequestUrl, PORT } from "../utils.ts";
 import { loadOrCreateScreenShareTlsCert } from "./tlsCert.ts";
 
 export type ReceiverRole = "app" | "obs";
@@ -1039,11 +1039,20 @@ function readBoundedText(req: http.IncomingMessage, maxBytes: number): Promise<s
   });
 }
 
-function setWhipCorsHeaders(res: http.ServerResponse) {
-  res.setHeader("Access-Control-Allow-Origin", "*");
-  res.setHeader("Access-Control-Allow-Methods", "POST, PATCH, DELETE, OPTIONS");
-  res.setHeader("Access-Control-Allow-Headers", "Content-Type, Authorization, If-Match");
-  res.setHeader("Access-Control-Expose-Headers", "Location, ETag, Link");
+export const MAX_WHIP_CLIENT_SOCKETS = 100;
+
+function setWhipCorsHeaders(res: http.ServerResponse, origin?: string, allowed = true) {
+  if (allowed) {
+    if (origin) {
+      res.setHeader("Access-Control-Allow-Origin", origin);
+      res.setHeader("Vary", "Origin");
+    } else {
+      res.setHeader("Access-Control-Allow-Origin", "*");
+    }
+    res.setHeader("Access-Control-Allow-Methods", "POST, PATCH, DELETE, OPTIONS");
+    res.setHeader("Access-Control-Allow-Headers", "Content-Type, Authorization, If-Match");
+    res.setHeader("Access-Control-Expose-Headers", "Location, ETag, Link");
+  }
   res.setHeader("Accept-Patch", "application/trickle-ice-sdpfrag");
 }
 
@@ -1057,17 +1066,35 @@ function sendWhipError(res: http.ServerResponse, statusCode: number, message: st
 }
 
 export async function handleWhipRequest(req: http.IncomingMessage, res: http.ServerResponse): Promise<void> {
-  setWhipCorsHeaders(res);
+  const origin = req.headers.origin;
+  const allowedOrigin = isAllowedOrigin(origin);
+  setWhipCorsHeaders(res, origin, allowedOrigin);
 
   if (req.method === "OPTIONS") {
+    if (!allowedOrigin) {
+      sendWhipError(res, 403, "Cross-Origin Request Blocked");
+      return;
+    }
     res.writeHead(204);
     res.end();
     return;
   }
 
-  const url = new URL(req.url || "/", `http://${req.headers.host || "localhost"}`);
+  const url = parseRequestUrl(req);
+  if (!url) {
+    sendWhipError(res, 400, "Bad Request");
+    return;
+  }
   const rawPath = url.pathname.replace(/\/+$/, "") || "/";
   const pathname = rawPath.toLowerCase();
+
+  if (
+    !allowedOrigin &&
+    (pathname === "/whip" || pathname.startsWith("/whip/") || (req.method !== "GET" && req.method !== "HEAD"))
+  ) {
+    sendWhipError(res, 403, "Cross-Origin Request Blocked");
+    return;
+  }
 
   if (
     (pathname === "/" || pathname === "/share" || pathname === "/screen" || pathname === "/whip") &&
@@ -1307,10 +1334,19 @@ export async function startScreenShareServer(
 
   let httpPort = 0;
   let httpsPort = 0;
+  let activeClientSockets = 0;
   const tcpServer = net.createServer((client) => {
+    if (activeClientSockets >= MAX_WHIP_CLIENT_SOCKETS) {
+      try {
+        client.destroy();
+      } catch {}
+      return;
+    }
+    activeClientSockets++;
     const clientIp = client.remoteAddress?.replace(/^::ffff:/, "") || "unknown";
     activeSockets.add(client);
 
+    let clientClosed = false;
     const firstByteTimer = setTimeout(() => {
       try {
         client.destroy();
@@ -1320,6 +1356,10 @@ export async function startScreenShareServer(
     client.on("close", () => {
       clearTimeout(firstByteTimer);
       activeSockets.delete(client);
+      if (!clientClosed) {
+        clientClosed = true;
+        activeClientSockets = Math.max(0, activeClientSockets - 1);
+      }
     });
     client.on("error", () => {
       clearTimeout(firstByteTimer);
