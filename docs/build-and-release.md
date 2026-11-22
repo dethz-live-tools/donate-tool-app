@@ -34,15 +34,15 @@ This guide covers local development, multi-platform builds, and automated GitHub
 bun run dev:ui
 ```
 This runs `tauri dev`, which spawns:
-- The backend server on `http://127.0.0.1:3001`
-- The Vite frontend dev server on `http://localhost:1420`
-- The native Tauri desktop window
+- The backend server on `http://0.0.0.0:3001` (`127.0.0.1` + LAN IPs; set `HOST=127.0.0.1` for local-only)
+- The Vite frontend dev server on `http://0.0.0.0:1420` (preview server on `0.0.0.0:4173`)
+- The native Tauri desktop window (automatically restarting any outdated backend instance with `apiRevision < 5` on launch and cleaning up managed backend child processes on exit)
 
 ### Run Browser/Dev Mode (Without Native Desktop Shell)
 ```bash
 bun run dev
 ```
-Runs both `server/index.ts` and Vite dev server simultaneously via `dev.ts`.
+Runs both `server/index.ts` and Vite dev server simultaneously via `dev.ts` (restarting any outdated bridge instance found on port `3001` before starting Vite).
 
 ### Standalone Backend Server
 ```bash

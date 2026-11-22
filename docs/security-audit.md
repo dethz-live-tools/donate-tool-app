@@ -33,8 +33,8 @@ A comprehensive source-code security audit was conducted on `donate-tools-pc`. T
 - **Remediation**: Extracted shared `classifyBlockedHost()` in `server/utils.ts` (stripping IPv6 brackets and classifying metadata/link-local vs loopback hosts) and enforced it in `validateWebhookUrl()` (`server/services/webhook.ts`, alongside `redirect: "error"` on `fetch()`), `isValidExternalLayerUrl()` (`server/config.ts`), `STUDIO_OBS_HTML` (`server/routes/overlays.ts`), and `handleAddExternalLayer()` (`src/components/StudioTab.tsx`), covered by `tests/security.test.ts` and `server/studio.test.ts`.
 
 ### 1.8 CORS Origin Allowlist
-- **Vulnerability / Exposure**: External web pages visited in the same browser should not be able to query or mutate `http://127.0.0.1:3001/api/*`.
-- **Remediation**: `isAllowedOrigin()` in `server/index.ts` restricts browser `Origin` headers to `tauri:` / `tauri.localhost` and loopback hosts (`localhost`, `127.0.0.1`, `::1`, `[::1]`), returning HTTP `403` for untrusted cross-origin `/api/*` requests and preflights.
+- **Vulnerability / Exposure**: External public web pages visited in the same browser should not be able to query or mutate bridge endpoints (`/api/*`) over loopback or LAN.
+- **Remediation**: `isAllowedOrigin()` in `server/index.ts` restricts browser `Origin` headers to `tauri:` / `tauri.localhost` and loopback/private LAN hosts (`localhost`, loopback, RFC 1918/ULA, active host NIC IPs, `.local` via `isPrivateOrLanHost()`), returning HTTP `403` for untrusted public cross-origin `/api/*` requests and preflights.
 
 ### 1.9 Single-Pass TTS Template Substitution
 - **Vulnerability**: Sequential string replacements in TTS templates could re-substitute placeholders injected inside `{nickname}` or `{username}` with the viewer's `{comment}`.
@@ -47,6 +47,30 @@ A comprehensive source-code security audit was conducted on `donate-tools-pc`. T
 ### 1.11 CI Audit Enforcement & Workflow Expression Context Hardening
 - **Vulnerability**: `.github/workflows/security.yml` masked dependency audit failures (`bun pm audit || echo ...`), and `.github/workflows/release.yml` interpolated `${{ needs.check-version.outputs.version }}` directly inside an inline PowerShell script.
 - **Remediation**: Switched dependency scanning to failing `bun audit` on Node 24/Bun workflow actions, and moved `VERSION: ${{ needs.check-version.outputs.version }}` into step `env:` (`$env:VERSION`).
+
+### 1.12 Overlay Git/ZIP Importer Command, SSRF, Symlink & XSS Hardening
+- **Vulnerability**: `server/services/overlays.ts` invoked shell `exec()` in `extractZip()`, allowed arbitrary schemes (`file://`, `ext::`) and local/metadata URLs in `pullOverlayFromGit()`, followed symlinks in `copyRecursiveSync()`, and interpolated unescaped `gitUrl` into fallback `index.html`.
+- **Remediation**: Replaced `exec()` with `execFile()`, added `validateRemoteRepoUrl()` + `fetchSafeZipResponse()` (`redirect: "manual"`, up to 3 validated hops, 25 MiB cap), disabled Git symlinks (`-c core.symlinks=false`), skipped symlinks with path-containment checks during copy/create, and HTML-escaped fallback metadata.
+
+### 1.13 WHIP Bearer Token Isolation, Peer Cap & Self-Signed TLS
+- **Vulnerability / Exposure**: `registerReceiverPeer("obs")` and `broadcastStatus()` in `server/services/screenShare.ts` sent the raw WHIP Bearer token to `"obs"` Browser Source SSE peers; WebRTC capture on plain LAN HTTP required browser flags; SSE receiver count had no cap.
+- **Remediation**: Stripped `token` (`""`) for `"obs"` peers (`statusForPeer()`), added `MAX_RECEIVER_PEERS = 50`, destroyed oversized SDP request streams in `readBoundedText()`, added `X-Content-Type-Options: nosniff`, and added same-port self-signed EC P-256 HTTPS multiplexing (`server/services/tlsCert.ts`, private key mode `0o600`).
+
+### 1.14 Mandatory Spotify OAuth CSRF State Verification & Reflected XSS Fix
+- **Vulnerability**: `/api/spotify/callback` (`server/routes/spotify.ts`) skipped CSRF `state` verification when `expectedOAuthState` was `null`, generated state with `Math.random()`, and echoed unescaped `error`, token response text, and error messages as `text/html`.
+- **Remediation**: Switched to `randomBytes(24).toString("hex")`, enforced mandatory constant-time `timingSafeEqual()` validation on every callback, HTML-escaped dynamic outputs via `escapeHtml()`, and added `X-Content-Type-Options: nosniff`.
+
+### 1.15 Edge TTS SSML Attribute Sanitization & Payload Cap
+- **Vulnerability**: `buildSSML()` in `server/services/tts.ts` only XML-escaped `text`, allowing crafted string `voice`, `rate`, or `pitch` query/body values to inject attributes/tags into `<voice>` or `<prosody>`.
+- **Remediation**: Added `sanitizeVoice()` (`/^[a-zA-Z0-9-]{2,64}$/`), strict validation and clamping in `formatRate()` (`-50%`..`+200%`) and `formatPitch()` (`-50`..`+100` Hz/st), XML attribute escaping, and a `1000`-character length limit.
+
+### 1.16 Bounded Request Buffering, Link-Local CORS Exclusion & SSE Header Safety
+- **Vulnerability**: `parseJsonBody()` (`server/utils.ts`) did not settle or call `req.destroy()` when payload size exceeded `1 MiB`; `isPrivateOrLanHost()` / `getLanAddresses()` permitted `169.254.*` / `fe80:` hosts; `server/routes/status.ts` overwrote Origin-scoped CORS headers on SSE streams with `*`.
+- **Remediation**: Added `Buffer` byte counting, `settled` guard, and `req.destroy()` in `parseJsonBody()`, excluded link-local `169.254.*` and `fe80:` from LAN/CORS helpers, and preserved existing `Access-Control-Allow-Origin` headers on SSE routes.
+
+### 1.17 Loopback-Restricted Folder Execution & LAN Self-Targeting SSRF Guard
+- **Vulnerability**: On `0.0.0.0:3001`, remote LAN clients could trigger `/api/overlays/open-folder` or pass the host's own active LAN IP + port `3001` in webhooks / Studio external iframe layers; API management routes on LAN rely on trusted subnet isolation.
+- **Remediation**: Restricted `/api/overlays/open-folder` via `isLoopbackAddress()` (HTTP `403` from non-loopback peers) and added `isSelfTargetHost()` / `currentHost` port checks for bridge port `3001`. Set `HOST=127.0.0.1` to restrict the main bridge to loopback only.
 
 ---
 

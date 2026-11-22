@@ -6,7 +6,7 @@
 
 ## 1. How It Works
 
-1. **Static Serving**: The local backend server (`http://127.0.0.1:3001`) statically hosts interactive HTML5/CSS3/JS overlays from the `overlays/` folder at `http://127.0.0.1:3001/overlays/<overlay-id>/`.
+1. **Static Serving**: The backend server listens on `http://0.0.0.0:3001` (`http://127.0.0.1:3001` locally or `http://<lan-ip>:3001` over LAN) and hosts interactive HTML5/CSS3/JS overlays from `overlays/` at `/overlays/<overlay-id>/`. (For the built-in WHIP Screen Share overlay `/overlays/screen-share/`, see [Screen Share Receiver Guide](screen-share-whip.md).)
 2. **Real-Time Data (SSE)**: Overlays automatically connect to `http://127.0.0.1:3001/api/status/stream` via Server-Sent Events (SSE). They update instantaneously without polling when:
    - Spotify song changes, pauses, resumes, or stops.
    - TikTok LIVE viewers send gifts or donations.

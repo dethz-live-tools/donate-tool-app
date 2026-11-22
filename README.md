@@ -36,14 +36,20 @@ Built with **Tauri v2**, **React 19**, **TypeScript**, **Vite**, and **Bun**, st
   - Built-in GitHub release update checker on launch and in the **ABOUT** tab.
 
 - 📺 **Overlays Market & Overlay Studio**
-  - **Local Static Serving**: Hosts transparent HTML5/CSS3 widgets directly from `overlays/` at `http://127.0.0.1:3001/overlays/<id>/` for OBS Studio and Streamlabs.
-  - **In-App Marketplace & Custom Widgets**: Browse, preview, scaffold custom widgets, and copy OBS Browser Source URLs with 1-click.
+  - **Local & LAN Static Serving**: Hosts transparent HTML5/CSS3 widgets from `overlays/` at `http://127.0.0.1:3001/overlays/<id>/` (and `http://<lan-ip>:3001/overlays/<id>/`) for OBS Studio and Streamlabs.
+  - **In-App Marketplace & Custom Widgets**: Browse, preview, scaffold custom widgets, import remote Git/ZIP overlays cleanly, and copy OBS Browser Source URLs with 1-click.
   - **Built-in Presets**: RawBlock Spotify Player, TikTok Live Gift Alert Box, Minimal Floating Song Pill, and Stream Dual Ticker.
   - **Overlay Studio**: Combine multiple overlays plus external HTTP/HTTPS iframe layers onto a unified scene, save named OBS scene profiles (`?profile=<id>`), preview TikTok LIVE safe zones, and sync live via SSE.
 
-- ⚡ **Multi-OS Desktop Native App**
-  - Packaged with **Tauri v2** for ultra-low memory footprint and instant startup.
-  - Self-contained background service spawner for the Bun-compiled backend (with hidden console window on Windows and `BRIDGE: ONLINE/OFFLINE` sidebar status).
+- 🖥️ **LAN Screen Share Receiver (WHIP + Dual HTTP/HTTPS)**
+  - **RFC 9725 WHIP WebRTC Ingest**: Receives live screen/audio streams on a configurable LAN port (default `0.0.0.0:3002`) from OBS Studio (`WHIP`), GStreamer (`whipsink`), or the built-in browser sharer.
+  - **Same-Port HTTP + Self-Signed HTTPS**: Multiplexes plaintext HTTP and TLS (`screen-share-cert.pem` / `screen-share-key.pem` auto-generated with LAN IP SANs) on port `3002` so browsers on LAN can use `navigator.mediaDevices.getDisplayMedia()` at `https://<lan-ip>:3002/share` without insecure-origin flags.
+  - **Bearer Auth & OBS Isolation**: Constant-time SHA-256 Bearer verification, transparent OBS Browser Source (`/overlays/screen-share/` with hover volume/mute HUD), non-blocking stream mirroring, and automatic token masking in public config and OBS SSE payloads.
+
+- ⚡ **Multi-OS Desktop Native App & Full LAN Mode**
+  - Packaged with **Tauri v2** for ultra-low memory footprint, managed backend cleanup on exit, and automatic restart of outdated bridge processes (`apiRevision`).
+  - Serves bridge (`0.0.0.0:3001`), Vite dev/preview (`0.0.0.0:1420` / `4173`), and WHIP receiver (`0.0.0.0:3002`) on LAN by default (set `HOST=127.0.0.1` for local-only binding), with dynamic `API_BASE` resolution on LAN browsers and LAN-aware CORS allowlists.
+  - Self-contained background service spawner with hidden console window on Windows and `BRIDGE: ONLINE/OFFLINE` sidebar status.
   - Persistent per-OS configuration in app data directories (`%APPDATA%\dethz-lab\dethz-socket\config.yaml` on Windows with legacy migration; `~/Library/Application Support/zip.kizuna.donate/config.yaml` on macOS; `~/.local/share/zip.kizuna.donate/config.yaml` on Linux).
   - Cross-platform release builds for macOS (Apple Silicon + Intel), Linux (Debian/RPM/AppImage), and Windows (NSIS/MSI + Portable ZIP).
 
@@ -53,10 +59,10 @@ Built with **Tauri v2**, **React 19**, **TypeScript**, **Vite**, and **Bun**, st
   - Catppuccin Macchiato dark theme with vibrant Sapphire highlights.
   - Comprehensive Thai character support via `IBM Plex Sans Thai` fallback font.
 
-- 📡 **Live Webhook Activity Logs & SSRF Hardening**
+- 📡 **Live Webhook Activity Logs & Security Hardening**
   - Per-type retention of up to 50 webhook transmissions per type (250 total) with **ALL / GIFT / TTS / SPOTIFY** filter tabs.
   - Inspect HTTP status codes, target URIs, payload JSON, and remote server responses, with quick test buttons per event type.
-  - Blocks disallowed protocols, embedded credentials, cloud metadata/link-local addresses (including IPv6 and IPv4-mapped forms), internal API port loopbacks, and HTTP redirects (`redirect: "error"`).
+  - Enforces SSRF/redirect guards (including self-LAN API port blocking), strict Git/ZIP overlay importer validation (`execFile`, safe redirects, symlink/path checks), mandatory OAuth CSRF state verification with HTML escaping, SSML sanitization, bounded JSON/SDP body streams, and loopback-only OS folder opening.
 
 ---
 
@@ -89,18 +95,21 @@ bun run dev:ui
 bun run dev
 ```
 
-The background bridge server will start on `http://127.0.0.1:3001` and the frontend UI will be accessible on `http://localhost:1420`.
+The background bridge server listens on `http://0.0.0.0:3001` (`127.0.0.1` + LAN IPs; set `HOST=127.0.0.1` to restrict locally), the Vite UI listens on `0.0.0.0:1420`, and the optional WHIP Screen Share receiver listens on `0.0.0.0:3002` (HTTP + HTTPS).
 
 ### Testing & Verification
 
 ```bash
-# Run backend, security, Studio, and i18n unit tests
+# Run backend, security, Studio, Screen Share, and i18n unit tests
 bun test
 
 # Type-check and build frontend bundle
 bun run build
 
-# Run Tauri Rust tests (Windows config resolution & legacy migration)
+# Run dependency vulnerability audit
+bun audit
+
+# Run Tauri Rust tests (Windows config resolution, migration, backend revision checks)
 cd src-tauri && cargo test
 ```
 
@@ -125,6 +134,10 @@ tts:
   allowed_roles: [owner, moderator, subscriber] # Omit or empty = all roles
 commands:
   allowed_roles: [owner, moderator] # Chat commands (!sr / !songrequest / !request / !song)
+screen_share:
+  enabled: false # Auto-start WHIP HTTP+HTTPS receiver on launch
+  port: 3002
+  token: "" # Auto-generated Bearer token when started
 ```
 
 ---
@@ -215,6 +228,7 @@ Detailed guides are located in the [`docs/`](docs/) directory:
 - 🏛️ [**Architecture & System Design**](docs/architecture.md): Overview of Tauri desktop runtime, Bun bridge server, SSE state synchronization, i18n, and services.
 - 🆕 [**Latest Features (v0.1.11+)**](docs/latest-features.md): Update checker, role-based bot access, split webhooks, log filters, EN/TH language switcher, auto live polling, portable builds, and hardening.
 - 📺 [**Overlays & Marketplace Guide**](docs/overlays.md): Browser Source configuration in OBS, Overlay Studio, named profiles, and custom widgets.
+- 🖥️ [**Screen Share Receiver (WHIP) Guide**](docs/screen-share-whip.md): Setup manual for LAN WHIP senders (OBS, GStreamer, custom RFC 9725 clients), OBS Browser Source options, and troubleshooting.
 - 📡 [**Webhook Specifications**](docs/webhooks.md): Full schema definitions for gift, TTS/chat, and Spotify webhooks plus SSRF checks and log retention.
 - 🎵 [**Spotify Setup Guide**](docs/spotify-setup.md): Step-by-step instructions for creating a Spotify Developer App, granting scopes, and linking your account.
 - 🔨 [**Build & Release Guide**](docs/build-and-release.md): Running tests, compiling binaries locally, packaged config paths, and multi-OS GitHub Actions workflows.
